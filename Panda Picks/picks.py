@@ -1,11 +1,8 @@
 import pandas as pd
 import numpy as np
 
-
-# w= 'WEEK1'
-
 def makePicks():
-    weeks = ["1", '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17']
+    weeks = ["1", '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # weeks = ["1"]
     for w in weeks:
         # Set Grade Precision
@@ -17,11 +14,8 @@ def makePicks():
         # Load & Matchups & spreads
         matchups = pd.read_csv(r"..\Panda Picks\Data\Matchups\matchups_WEEK" + w + ".csv")
         matchups = matchups.dropna(axis=0, how='all')
-
         # merge grades with home teams on TEAM column
         matchups = pd.merge(matchups, grades, on="Home Team")
-        # print(matchups)
-
         grades = grades.rename(columns={
             'Home Team': 'Away Team',
             'OVR': 'OPP OVR',
@@ -38,12 +32,8 @@ def makePicks():
             'COV': 'OPP COV'
         })
         matchups = pd.merge(matchups, grades, on="Away Team")
-
-        # print(matchups)
         matchups.to_csv(r"..\Panda Picks\Data\Matchups\grades_matchups_WEEK" + w + ".csv", index=False)
-
         col_list = matchups.columns.tolist()
-
         matchups = matchups[[
             # 'Total',
             'Game Date',
@@ -76,13 +66,8 @@ def makePicks():
             'OPP PRSH',
             'OPP COV'
         ]]
-        # print(matchups)
-
         final = matchups
-        # print(final)
-
         results = final[['Game Date', 'Home Team', 'Home Spread', 'Away Team', 'Away Spread']].copy()
-
         # Evaluate Offensive vs Defensive Matchups & Defensive vs OFfensive Matchups, Highlight any that win both
         results['Overall Adv'] = final['OVR'] - final['OPP OVR']
         results['Offense Adv'] = final['OFF'] - final['OPP DEF']
@@ -103,17 +88,10 @@ def makePicks():
                 results['Away Team'], 'No Pick'))
         # results['Game Pick'] = np.where((results['Offense Adv']>6) & (results['Defense Adv']>6), results['TEAM'],'No Pick')
         # results['Game Pick'] = np.where((final['OVERALL'] - final['OPP OVERALL'] >= 5) & (final['OFFENSE'] - final['OPP DEFENSE'] >= 2.5) & (final['DEFENSE'] - final['OPP OFFENSE'] >= 2.5), results['TEAM'], 'No Pick')
-
         results = results.sort_values(by=['Overall Adv'], ascending=False)
-        # print(results)
-
         results = results[results['Game Pick'] != 'No Pick']
-        print("---------Dick's Picks: " + w + "-----------")
-        # print(results)
-        # # #Send to CSV in project folder
+        print("---------Panda Picks: WEEK " + w + "-----------")
         results.to_csv(r"..\Panda Picks\Data\Picks\WEEK" + w + '.csv', index=False)
-        # results.to_csv(r"..\FlaskPicks\sample_app\Picks\\WEEK"+ w + '.csv', index = False)
-        # weeks.pop()[0]
 
 
 if __name__ == '__main__':

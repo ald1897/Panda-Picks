@@ -3,6 +3,7 @@ import time
 import pdf_scraper
 import matchups
 import picks
+import spreads
 
 
 def start():
@@ -18,6 +19,10 @@ def start():
     picks.makePicks()
     print("Done Making Picks")
     time.sleep(1)
+    print("Getting Spread Info For Backtests")
+    time.sleep(1)
+    spreads.getSpreads()
+    print("Spread Info Consumed")
 
 
 
