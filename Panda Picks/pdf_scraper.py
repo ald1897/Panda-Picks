@@ -71,7 +71,7 @@ def getGrades():
     new_teams = new_teams[
         ['TEAM', 'OVR', 'OFF', 'PASS', 'RUN', 'RECV', 'PBLK', 'RBLK', 'DEF', 'RDEF', 'TACK', 'PRSH', 'COV']]
     # new_teams['SPEC'] = new_teams['SPEC']*2
-    print(new_teams)
+    # print(new_teams)
 
     new_teams.to_csv(r"Data/Grades/TeamGrades.csv", index=False)
 

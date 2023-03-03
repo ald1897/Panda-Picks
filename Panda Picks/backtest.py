@@ -10,7 +10,7 @@ final = pd.DataFrame()
 for w in weeks:
     games = {'week':[w]}
     games = pd.DataFrame(data=games)
-    week = pd.read_csv(r"\Projects\Pandas-Picks\Picks\\" + w +".csv")
+    week = pd.read_csv(r"\Panda Picks\Data\Picks\\" + w +".csv")
     # print(week)
     spreads = pd.read_csv(r"\Projects\Pandas-Picks\Spreads\\" + w + "_spreads.csv") 
     spreads = spreads.drop(columns=['Total', 'Moneyline'])
