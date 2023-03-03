@@ -1,99 +1,76 @@
-import pandas as pd 
-import numpy as np 
-#Set Grade Precision
-pd.set_option("display.precision", 4)
-pd.options.display.float_format = '{:10,.2f}'.format
+import pandas as pd
+import numpy as np
 
-#Load Offensive Player Grades for each position
-weeks =['WEEK1','WEEK2','WEEK3','WEEK4','WEEK5','WEEK6','WEEK7','WEEK8','WEEK9','WEEK10','WEEK11','WEEK12','WEEK13','WEEK14','WEEK15']
-final = pd.DataFrame()
-for w in weeks:
-    games = {'week':[w]}
-    games = pd.DataFrame(data=games)
-    week = pd.read_csv(r"\Panda Picks\Data\Picks\\" + w +".csv")
-    # print(week)
-    spreads = pd.read_csv(r"\Projects\Pandas-Picks\Spreads\\" + w + "_spreads.csv") 
-    spreads = spreads.drop(columns=['Total', 'Moneyline'])
-    spreads = spreads.dropna(axis=1, how='all')
-    spreads = spreads.rename(columns={'Score':'Opponent Score','Opp Score':'Team Score'})
-    spreads['Spread'] = spreads['Spread']*(-1)
-    
-    spreads = spreads[[w,'Team Score','Opponent Score', 'Spread']]
-    # print(spreads)
-    # print(week)
-    # print(spreads)
+def runTests():
+    # Set Grade Precision
+    pd.set_option("display.precision", 4)
+    pd.options.display.float_format = '{:10,.2f}'.format
 
-    picks = week[['TEAM', w,'Game Pick']].copy()
+    # Load Offensive Player Grades for each position
+    weeks =['WEEK1','WEEK2','WEEK3','WEEK4','WEEK5','WEEK6','WEEK7', 'WEEK8','WEEK9','WEEK10','WEEK11','WEEK12','WEEK13','WEEK14','WEEK15', 'WEEK16', 'WEEK17','WEEK18']
+    # weeks = ['WEEK1', 'WEEK2']
+    final = pd.DataFrame()
+    last = pd.DataFrame()
+    for w in weeks:
+        print("Generating Stats for "+w+'...')
+        games = {'week': [w]}
+        games = pd.DataFrame(data=games)
+        week = pd.read_csv(r'Data/Picks/' + w + '.csv')
 
-    # print(picks)
-    # print(games)
-    stats = pd.DataFrame(games, columns = ['week','ATS Wins','ATS Losses','ML Wins', 'ML Losses', 'Overall Wins'])
+        spreads = pd.read_csv(r"Data/Spreads/spreads.csv")
+        spreads['Game Key'] = spreads['Home Team'] + spreads['Away Team']
+        spreads = spreads[
+            ['Game Date', 'Home Team', 'Home Score', 'Away Score', 'Away Team', 'Home Line Close', 'Away Line Close',
+             'Game Key']]
+        spreads = spreads.loc[spreads['Game Date'] == w]
 
-    compare = pd.merge(picks, spreads, on=[w])
-    compare = compare[compare['Game Pick'] != 'No Pick']
-    # np.where(compare['Spread'] == 'PK', compare['Spread'].replace({'PK':0}), compare['Spread'])
-    # compare['Spread'] = pd.to_numeric(compare['Spread'])
-    # print(compare)
-#     compare['Spread 2'] = compare['Spread']
+        picks = week[['Game Date', 'Home Team', 'Away Team', 'Game Pick']].copy()
+        picks['Game Key'] = picks['Home Team'] + picks['Away Team']
 
-    compare['Margin'] = compare['Opponent Score'] - compare['Team Score']
-    
-    compare['ATS Win'] = np.where(compare['Game Pick'] != 'No Pick' , np.where(compare['Margin'] < compare['Spread'], 1, np.where(compare['Margin'] > compare['Spread'], 0,0)),0)
-    compare['ATS Loss'] = np.where(compare['Game Pick'] != 'No Pick' , np.where(compare['Margin'] < compare['Spread'], 0, np.where(compare['Margin'] > compare['Spread'], 1,0)),0)
-    compare['ATS Push'] = np.where(compare['Margin'] == compare['Spread'], 1,0)
-    compare['ML Win'] = np.where(compare['Game Pick'] != 'No Pick' , np.where(compare['Team Score'] > compare['Opponent Score'], 1, np.where(compare['Team Score'] < compare['Opponent Score'], 0,0)),0)
-    compare['ML Loss'] = np.where(compare['Game Pick'] != 'No Pick' , np.where(compare['Team Score'] < compare['Opponent Score'], 1, np.where(compare['Team Score'] > compare['Opponent Score'], 0,0)),0)
-    compare['ML Push'] = np.where(compare['Team Score'] == compare['Opponent Score'], 1,0)
-    compare['Spread Odds'] = -110
-    compare['ML Odds'] = -165
-    compare['Wager'] = 100
-    compare['ATS Payout'] = np.where(compare['ATS Win']==1,((100/110)*(compare['Wager']/2)), ((compare['Wager']/2)*-1))
-    compare['ML Payout'] = np.where(compare['ML Win']==1,((100/165)*(compare['Wager']/2)), ((compare['Wager']/2)*-1))
-    compare['Total Payout'] = compare['ATS Payout'] + compare['ML Payout']
-    # print(compare)
-#     compare.to_csv('G:\Projects\DicksPicks\Picks\\'+ w + '_pickTable.csv', index = False)
+        stats = pd.DataFrame(games, columns=['Game Date', 'ATS Wins', 'ATS Losses', 'ML Wins', 'ML Losses', 'Overall Wins'])
 
+        compare = pd.merge(picks, spreads, on=['Game Key'])
+        compare = compare.drop(columns=['Home Team_x', 'Away Team_x', 'Game Date_x'])
+        compare = compare[compare['Game Pick'] != 'No Pick']
+        # np.where(compare['Spread'] == 'PK', compare['Spread'].replace({'PK':0}), compare['Spread'])
+        compare['Home Line Close'] = pd.to_numeric(compare['Home Line Close'])
+        compare['Away Line Close'] = pd.to_numeric(compare['Away Line Close'])
+        compare['Margin'] = compare['Away Score'] - compare['Home Score']
+        # print(compare)
+        compare['ATS Win/Loss'] = np.where(compare['Game Pick'] == compare['Home Team_y'],
+                                       np.where(compare['Home Score'] + compare['Home Line Close'] <= compare['Away Score'], 0, 1),
+                                       np.where(compare['Away Score'] + compare['Away Line Close'] <= compare['Home Score'], 0, 1))
+        compare['ML Win/Loss'] = np.where(compare['Game Pick'] == compare['Home Team_y'],
+                                           np.where(compare['Home Score'] > compare['Away Score'], 1, 0),
+                                          np.where(compare['Away Score'] > compare['Home Score'], 1, 0))
+        # print(compare)
+        compare =  compare.rename(columns={
+            'Home Team_y': 'Home Team',
+            'Away Team_y': 'Away Team'})
+        final = compare[['Game Pick', 'Home Team', 'Away Team', 'Home Score', 'Away Score', 'Home Line Close', 'ATS Win/Loss', 'ML Win/Loss']]
+        compare['Spread Odds'] = -110
+        compare['ML Odds'] = -165
+        compare['Wager'] = 100
+        compare['ATS Payout'] = np.where(compare['ATS Win/Loss']==1,((100/110)*(compare['Wager']/2)), ((compare['Wager']/2)*-1))
+        compare['ML Payout'] = np.where(compare['ML Win/Loss']==1,((100/165)*(compare['Wager']/2)), ((compare['Wager']/2)*-1))
+        compare['Total Payout'] = compare['ATS Payout'] + compare['ML Payout']
 
-    
-    games['ATS Wins'] = compare['ATS Win'].sum(axis=0)
-    games['ATS Losses'] = compare['ATS Loss'].sum(axis=0)
-    games['ATS Pushes'] = compare['ATS Push'].sum(axis=0)
-    games['ML Wins'] = compare['ML Win'].sum(axis=0)
-    games['ML Losses'] = compare['ML Loss'].sum(axis=0)
-    games['ML Pushes'] = compare['ML Push'].sum(axis=0)
-    games['Weekly Wins'] = compare['ATS Win'].sum(axis=0) + compare['ML Win'].sum(axis=0)
-    games['Weekly Losses'] = compare['ATS Loss'].sum(axis=0) + compare['ML Loss'].sum(axis=0)
-    games['Weekly Pushes'] = compare['ATS Push'].sum(axis=0) + compare['ML Push'].sum(axis=0)
-    games['Weekly Risk'] =   compare['Wager'].sum(axis=0)
-    games['Weekly Profit'] = compare['Total Payout'].sum(axis=0)
-    # print(games)
-    final = final.append(games, ignore_index=True)
-    # print(final)
+        games['ATS Win %'] = compare['ATS Win/Loss'].sum(axis=0) / len(compare.index)
+        games['ML Win %'] = compare['ML Win/Loss'].sum(axis=0) / len(compare.index)
+        games['Weekly Risk'] = compare['Wager'].sum(axis=0)
+        games['Weekly Profit'] = compare['Total Payout'].sum(axis=0)
 
-print(final)
+        last = pd.concat([games, last])
 
-final['Total ATS Wins'] = final['ATS Wins'].sum(axis=0)
-final['Total ATS Losses'] = final['ATS Losses'].sum(axis=0) 
-final['Total ATS Pushes'] = final['ATS Pushes'].sum(axis=0) 
-final['Total ML Wins'] = final['ML Wins'].sum(axis=0) 
-final['Total ML Losses'] = final['ML Losses'].sum(axis=0) 
-final['Total ML Pushes'] = final['ML Pushes'].sum(axis=0) 
-final['Total Wins'] = final['Weekly Wins'].sum(axis=0) 
-final['Total Losses'] = final['Weekly Losses'].sum(axis=0)
-final['Total Pushes'] = final['Weekly Pushes'].sum(axis=0)
-final['Weekly ATS Win%'] = final['ATS Wins']/(final['ATS Wins']+final['ATS Losses'])
-final['Weekly ML Win%'] = final['ML Wins']/(final['ML Wins']+final['ML Losses'])
-final['Season ATS Winning %'] = final['Total ATS Wins']/(final['Total ATS Wins']+final['Total ATS Losses'])
-final['Season ML Winning %'] = final['Total ML Wins']/(final['Total ML Wins']+final['Total ML Losses'])
-final['Season Overall Winning %'] = final['Total Wins']/(final['Total Wins']+final['Total Losses'])
-final['Season Risk'] = final['Weekly Risk'].max(axis=0)
-final['Season Profit'] = final['Weekly Profit'].sum(axis=0)
-stats = final[['week','Weekly ATS Win%','Weekly ML Win%','Total ATS Wins','Total ATS Losses', 'Total ATS Pushes','Season ATS Winning %','Total ML Wins','Total ML Losses', 'Total ML Pushes','Season ML Winning %','Season Overall Winning %','Season Risk','Season Profit']].copy()
-
-print(stats)
+    last['Season ATS Winning %'] = np.average(last['ATS Win %'])
+    last['Season ML Winning %'] = np.average(last['ML Win %'])
+    # last['Season Overall Winning %'] = final['Total Wins']/(final['Total Wins']+final['Total Losses'])
+    last['Season Risk'] = last['Weekly Risk'].max(axis=0)
+    last['Season Profit'] = last['Weekly Profit'].sum(axis=0)
+    # print(last)
 
 
+    # stats['ats_wins'] = np.where(compare['ATS'] == 'W', 1, 0 )
 
-
-
-# stats['ats_wins'] = np.where(compare['ATS'] == 'W', 1, 0 )
+if __name__ == "__main__":
+    runTests()

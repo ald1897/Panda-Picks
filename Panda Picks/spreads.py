@@ -7,10 +7,6 @@ def getSpreads():
     abrevs = abrevs.rename(columns={
         'TEAM': 'Home Team'})
     new_teams = pd.merge(df, abrevs, on='Home Team')
-    # Rename team column to bring in away team abrevs
-    abrevs = abrevs.rename(columns={
-        'Home Team': 'Away Team'})
-    # merge spreads
     new_teams.drop(columns=[
         # 'RANK',
         'Home Team',
@@ -29,8 +25,11 @@ def getSpreads():
         'Unnamed: 14',
         'Unnamed: 15',
         'Unnamed: 16'], inplace=True)
+    # Rename team column to bring in away team abrevs
     abrevs = abrevs.rename(columns={
-        'Abrev': 'Home Team'})
+        'Home Team': 'Away Team'})
+    # abrevs = abrevs.rename(columns={
+    #     'Abrev': 'Home Team'})
     spreads = pd.merge(new_teams, abrevs, on='Away Team')
     spreads.drop(columns=[
         # 'RANK',
@@ -51,8 +50,10 @@ def getSpreads():
         'Unnamed: 15',
         'Unnamed: 16'], inplace=True)
     spreads = spreads.rename(columns={
-        'Abrev': 'Away Team',
+        'Abrev_y': 'Away Team',
+        'Abrev_x': 'Home Team',
         'Date': 'Game Date'})
+
     spreads.to_csv('./Data/Spreads/spreads.csv', index=False)
 
 
