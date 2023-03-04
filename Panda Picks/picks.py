@@ -81,11 +81,31 @@ def makePicks():
         results['Tackling Adv'] = final['TACK'] - ((final['OPP RUN'] + final['OPP RECV']) / 2)
         results['Pass Rush Adv'] = final['PRSH'] - ((final['OPP PBLK'] + final['OPP PASS']) / 2)
         results['Coverage Adv'] = final['COV'] - ((final['OPP RECV'] + final['OPP PBLK']) / 2)
+
+        # Ovr vs ovr, def vs opp off,
+        # results['Game Pick'] = np.where(
+        #     (results['Overall Adv'] >= 10),
+        #         results['Home Team'],
+        #         np.where((results['Overall Adv'] >= 10),
+        #             results['Away Team'], 'No Pick'))
+        # #
         results['Game Pick'] = np.where(
             (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
             results['Home Team'], np.where(
                 (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
                 results['Away Team'], 'No Pick'))
+        #
+        # results['Game Pick'] = np.where(
+        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
+        #     results['Home Team'], np.where(
+        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
+        #         results['Away Team'], 'No Pick'))
+        #
+        # results['Game Pick'] = np.where(
+        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
+        #     results['Home Team'], np.where(
+        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
+        #         results['Away Team'], 'No Pick'))
         # results['Game Pick'] = np.where((results['Offense Adv']>6) & (results['Defense Adv']>6), results['TEAM'],'No Pick')
         # results['Game Pick'] = np.where((final['OVERALL'] - final['OPP OVERALL'] >= 5) & (final['OFFENSE'] - final['OPP DEFENSE'] >= 2.5) & (final['DEFENSE'] - final['OPP OFFENSE'] >= 2.5), results['TEAM'], 'No Pick')
         results = results.sort_values(by=['Overall Adv'], ascending=False)
