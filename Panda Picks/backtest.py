@@ -1,116 +1,113 @@
 import pandas as pd
-import numpy as np
 
+def calculate_winnings(bet_amount, odds):
+    if odds > 0:
+        profit = bet_amount * (odds / 100)
+    else:
+        profit = bet_amount / (abs(odds) / 100)
+    total_payout = bet_amount + profit
+    return total_payout
 
-def runTests():
-    # Set Grade Precision
-    pd.set_option("display.precision", 4)
-    pd.options.display.float_format = '{:10,.2f}'.format
+def backtest():
+    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7']
+    final_results = pd.DataFrame()
+    cumulative_profit = 0
+    total_spread_bets = 0
+    total_spread_wins = 0
+    total_ml_bets = 0
+    total_ml_wins = 0
 
-    # Load Offensive Player Grades for each position
-    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8', 'WEEK9', 'WEEK10', 'WEEK11',
-             'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
-    # weeks = ['WEEK1']
-    final = pd.DataFrame()
-    last = pd.DataFrame()
-    for w in weeks:
-        print("Generating Stats for " + w + '...')
-        games = {'week': [w]}
-        games = pd.DataFrame(data=games)
-        week = pd.read_csv(r'Data/Picks/' + w + '.csv')
+    for week in weeks:
+        # Read the spread data from the CSV file
+        df = pd.read_csv('nflSpreads.csv')
 
-        spreads = pd.read_csv(r"Data/Spreads/spreads.csv")
-        spreads['Game Key'] = spreads['Home Team'] + spreads['Away Team']
-        spreads = spreads[
-            ['Game Date', 'Home Team', 'Home Score', 'Away Score', 'Away Team', 'Home Line Close', 'Away Line Close', 'Home Odds Close', 'Away Odds Close', 'Game Key']]
-        spreads = spreads.loc[spreads['Game Date'] == w]
+        # Read the picks from the CSV file
+        picks_df = pd.read_csv(f'Data/Picks/{week}.csv')
 
-        picks = week[['Game Date', 'Home Team', 'Away Team', 'Game Pick']].copy()
-        picks['Game Key'] = picks['Home Team'] + picks['Away Team']
+        # Merge the DataFrames on WEEK and Home Team
+        merged_df = pd.merge(picks_df, df, left_on=['WEEK', 'Home Team', 'Away Team'],
+                             right_on=['WEEK', 'Home Team', 'Away Team'])
+        pd.set_option('display.max_rows', 200)
+        pd.set_option('display.max_columns', 200)
 
-        stats = pd.DataFrame(games,
-                             columns=['Game Date', 'ATS Wins', 'ATS Losses', 'ML Wins', 'ML Losses', 'Overall Wins'])
+        # Determine if the pick was correct and calculate wager and profit
+        def check_pick(row):
+            bet_amount = 10  # Example bet amount
+            odds = -110  # Fixed odds for this calculation
+            if row['Game Pick'] == row['Home Team']:
+                correct = row['Home Score'] + row['Home Line Close'] > row['Away Score']
+            else:
+                correct = row['Away Score'] + row['Away Line Close'] > row['Home Score']
 
-        compare = pd.merge(picks, spreads, on=['Game Key'])
-        compare = compare.drop(columns=['Home Team_x', 'Away Team_x', 'Game Date_x'])
-        compare = compare[compare['Game Pick'] != 'No Pick']
-        # np.where(compare['Spread'] == 'PK', compare['Spread'].replace({'PK':0}), compare['Spread'])
-        compare['Home Line Close'] = pd.to_numeric(compare['Home Line Close'])
-        compare['Away Line Close'] = pd.to_numeric(compare['Away Line Close'])
-        compare['Home Odds Close'] = pd.to_numeric(compare['Home Odds Close'])
-        compare['Away Odds Close'] = pd.to_numeric(compare['Away Odds Close'])
+            winnings = calculate_winnings(bet_amount, odds) if correct else 0
+            return correct, winnings
 
-        compare['Margin'] = compare['Away Score'] - compare['Home Score']
-        # print(compare)
-        compare['ATS Win/Loss'] = np.where(compare['Game Pick'] == compare['Home Team_y'],
-                                           np.where(compare['Home Score'] + compare['Home Line Close'] <= compare[
-                                               'Away Score'], 0, 1),
-                                           np.where(compare['Away Score'] + compare['Away Line Close'] <= compare[
-                                               'Home Score'], 0, 1))
-        compare['ML Win/Loss'] = np.where(compare['Game Pick'] == compare['Home Team_y'],
-                                          np.where(compare['Home Score'] > compare['Away Score'], 1, 0),
-                                          np.where(compare['Away Score'] > compare['Home Score'], 1, 0))
-        # print(compare)
-        compare = compare.rename(columns={
-            'Home Team_y': 'Home Team',
-            'Away Team_y': 'Away Team'})
-        final = compare[
-            ['Game Pick', 'Home Team', 'Away Team', 'Home Score', 'Away Score', 'Home Line Close', 'ATS Win/Loss',
-             'ML Win/Loss']]
-        compare['Wager'] = 100
+        # Determine if the team won and calculate ML winnings
+        def check_win_and_calculate_winnings(row):
+            bet_amount = 10  # Example bet amount
+            if row['Home Score'] > row['Away Score']:
+                winner = row['Home Team']
+                winnings = calculate_winnings(bet_amount, row['Home Odds Close']) if row['Game Pick'] == row[
+                    'Home Team'] else 0
+            else:
+                winner = row['Away Team']
+                winnings = calculate_winnings(bet_amount, row['Away Odds Close']) if row['Game Pick'] == row[
+                    'Away Team'] else 0
+            return winner, winnings
 
+        merged_df[['ATS Pick Correct', 'ATS Winnings']] = merged_df.apply(lambda row: pd.Series(check_pick(row)), axis=1)
+        merged_df[['Winner', 'ML Winnings']] = merged_df.apply(lambda row: pd.Series(check_win_and_calculate_winnings(row)),
+                                                               axis=1)
+        merged_df['Winner Pick Correct'] = merged_df['Winner'] == merged_df['Game Pick']
 
-        conditions = [
-            (compare['Game Pick'] == compare['Home Team']) & (compare['ATS Win/Loss'] > 0),
-            (compare['Game Pick'] == compare['Away Team']) & (compare['ATS Win/Loss'] > 0),
-            (compare['Game Pick'] == compare['Home Team']) & (compare['ATS Win/Loss'] == 0),
-            (compare['Game Pick'] == compare['Away Team']) & (compare['ATS Win/Loss'] == 0)]
+        # Format the Winnings columns to 2 decimal places and as currency
+        merged_df['ATS Winnings'] = merged_df['ATS Winnings'].apply(lambda x: f"${x:,.2f}")
+        merged_df['ML Winnings'] = merged_df['ML Winnings'].apply(lambda x: f"${x:,.2f}")
 
-        choices = [1.9 * compare['Wager'] - compare['Wager'],
-                   1.9 * compare['Wager'] - compare['Wager'],
-                   compare['Wager']*-1,
-                   compare['Wager']*-1]
+        # Calculate total amount wagered and total profit
+        total_wagered = merged_df.shape[0] * 20  # Assuming each bet is $100
+        total_profit = merged_df['ATS Winnings'].apply(lambda x: float(x.replace('$', '').replace(',', ''))).sum() + \
+                       merged_df['ML Winnings'].apply(
+                           lambda x: float(x.replace('$', '').replace(',', ''))).sum() - total_wagered
 
-        compare['ATS Payout'] = np.select(conditions, choices, 0)
+        # Calculate win percentages
+        spread_bets = merged_df.shape[0]
+        spread_wins = merged_df['ATS Pick Correct'].sum()
+        ml_bets = merged_df.shape[0]
+        ml_wins = merged_df['Winner Pick Correct'].sum()
 
-        conditions = [
-            (compare['Game Pick'] == compare['Home Team']) & (compare['ML Win/Loss'] > 0),
-            (compare['Game Pick'] == compare['Away Team']) & (compare['ML Win/Loss'] > 0),
-            (compare['Game Pick'] == compare['Home Team']) & (compare['ML Win/Loss'] == 0),
-            (compare['Game Pick'] == compare['Away Team']) & (compare['ML Win/Loss'] == 0)]
+        spread_win_percentage = (spread_wins / spread_bets) * 100
+        ml_win_percentage = (ml_wins / ml_bets) * 100
 
-        choices = [compare['Home Odds Close'] * compare['Wager'] - compare['Wager'],
-                   compare['Away Odds Close'] * compare['Wager'] - compare['Wager'],
-                   compare['Wager']*-1,
-                   compare['Wager']*-1]
+        # Append results to final DataFrame
+        merged_df['Total Amount Wagered'] = total_wagered
+        merged_df['Total Profit'] = total_profit
+        final_results = pd.concat([final_results, merged_df])
 
-        compare['ML Payout'] = np.select(conditions, choices, 0)
-        compare['Weekly ATS Payout'] = compare['ATS Payout'].sum(axis=0)
-        compare['Weekly ML Payout'] = compare['ML Payout'].sum(axis=0)
-        compare['Total Payout'] = compare['ATS Payout'].sum(axis=0) + compare['ML Payout'].sum(axis=0)
-        compare.to_csv('./Data/Picks/compare.csv', index=False)
-        games['ATS Win %'] = compare['ATS Win/Loss'].sum(axis=0) / len(compare.index)
-        games['ML Win %'] = compare['ML Win/Loss'].sum(axis=0) / len(compare.index)
-        games['Weekly Risk'] = compare['Wager'].sum(axis=0)
-        games['ATS Payout'] = compare['ATS Payout'].sum(axis=0)
-        games['ML Payout'] = compare['ML Payout'].sum(axis=0)
-        games['Weekly Profit'] = games['ATS Payout'] + games['ML Payout']
+        # Update cumulative profit and win counts
+        cumulative_profit += total_profit
+        total_spread_bets += spread_bets
+        total_spread_wins += spread_wins
+        total_ml_bets += ml_bets
+        total_ml_wins += ml_wins
 
-        # games['Bank'] = compare['Wager']+games['Weekly Profit']
+        # Print the results for the current week
+        print(f"Results for {week}:")
+        print(merged_df[['Home Team', 'Away Team','Game Pick', 'Winner', 'ATS Pick Correct', 'Winner Pick Correct', 'ATS Winnings','ML Winnings', 'Total Amount Wagered', 'Total Profit']])
+        print(f"Total Amount Wagered: ${total_wagered:,.2f}")
+        print(f"Total Profit: ${total_profit:,.2f}")
+        print(f"Spread Win Percentage: {spread_win_percentage:.2f}%")
+        print(f"Money Line Win Percentage: {ml_win_percentage:.2f}%")
+        print("\n")
 
-        last = pd.concat([games, last])
+    # Calculate overall win percentages
+    overall_spread_win_percentage = (total_spread_wins / total_spread_bets) * 100
+    overall_ml_win_percentage = (total_ml_wins / total_ml_bets) * 100
 
-    last['Season ATS Winning %'] = np.average(last['ATS Win %'])
-    last['Season ML Winning %'] = np.average(last['ML Win %'])
-    # last['Season Overall Winning %'] = final['Total Wins']/(final['Total Wins']+final['Total Losses'])
-    last['Season Risk'] = last['Weekly Risk'].max(axis=0)
-    last['Season Profit'] = last['Weekly Profit'].sum(axis=0)
-    # print(last)
-
-    last.to_csv('./Data/Picks/stats.csv', index=False)
-
-    # stats['ats_wins'] = np.where(compare['ATS'] == 'W', 1, 0 )
-
+    # Print the cumulative profit and overall win percentages
+    print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
+    print(f"Overall Spread Win Percentage: {overall_spread_win_percentage:.2f}%")
+    print(f"Overall Money Line Win Percentage: {overall_ml_win_percentage:.2f}%")
 
 if __name__ == "__main__":
-    runTests()
+    backtest()

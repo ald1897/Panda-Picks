@@ -36,7 +36,7 @@ def makePicks():
         col_list = matchups.columns.tolist()
         matchups = matchups[[
             # 'Total',
-            'Game Date',
+            'WEEK',
             'Home Team',
             'Home Spread',
             'Away Team',
@@ -67,7 +67,7 @@ def makePicks():
             'OPP COV'
         ]]
         final = matchups
-        results = final[['Game Date', 'Home Team', 'Home Spread', 'Away Team', 'Away Spread']].copy()
+        results = final[['WEEK', 'Home Team', 'Home Spread', 'Away Team', 'Away Spread']].copy()
         # Evaluate Offensive vs Defensive Matchups & Defensive vs OFfensive Matchups, Highlight any that win both
         results['Overall Adv'] = final['OVR'] - final['OPP OVR']
         results['Offense Adv'] = final['OFF'] - final['OPP DEF']

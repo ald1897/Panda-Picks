@@ -25,7 +25,7 @@ def start():
     print("Spread Info Consumed")
     time.sleep(1)
     print("Backtesting")
-    backtest.runTests()
+    backtest.backtest()
     print('Backtesting completed')
 
 
