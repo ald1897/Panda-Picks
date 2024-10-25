@@ -1,9 +1,11 @@
 import pandas as pd
-from tabula import read_pdf
+import tabula
+import logger
 
 
 def getGrades():
-    df = read_pdf(r"Data/Grades/PFFTeamGrades.pdf", pages=1)
+    df =tabula.read_pdf(r"Data/Grades/PFFTeamGrades.pdf", pages=1)
+    print(df)
     abrevs = pd.read_csv(r"Data/Grades/NFL_translations.csv")
     df = df[0]
     df = df.drop(columns=['Unnamed: 0', 'Unnamed: 1', 'POINTS', 'Unnamed: 3'])

@@ -71,43 +71,28 @@ def makePicks():
         # Evaluate Offensive vs Defensive Matchups & Defensive vs OFfensive Matchups, Highlight any that win both
         results['Overall Adv'] = final['OVR'] - final['OPP OVR']
         results['Offense Adv'] = final['OFF'] - final['OPP DEF']
-        results['Passing Adv'] = final['PASS'] - ((final['OPP PRSH'] + final['OPP COV']) / 2)
+        results['Passing Adv'] = final['PASS'] - final['OPP COV']
         results['Pass Block Adv'] = final['PBLK'] - final['OPP PRSH']
         results['Receving Adv'] = final['RECV'] - final['OPP COV']
         results['Running Adv'] = final['RUN'] - final['OPP RDEF']
         results['Run Block Adv'] = final['RBLK'] - final['OPP RDEF']
         results['Defense Adv'] = final['DEF'] - final['OPP OFF']
-        results['Run Defense Adv'] = final['RDEF'] - ((final['OPP RUN'] + final['OPP RBLK']) / 2)
-        results['Tackling Adv'] = final['TACK'] - ((final['OPP RUN'] + final['OPP RECV']) / 2)
+        results['Run Defense Adv'] = final['RDEF'] - final['OPP RUN']
+        # results['Tackling Adv'] = final['TACK'] - final['OPP RUN']
         results['Pass Rush Adv'] = final['PRSH'] - ((final['OPP PBLK'] + final['OPP PASS']) / 2)
         results['Coverage Adv'] = final['COV'] - ((final['OPP RECV'] + final['OPP PBLK']) / 2)
 
-        # Ovr vs ovr, def vs opp off,
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10),
-        #         results['Home Team'],
-        #         np.where((results['Overall Adv'] >= 10),
-        #             results['Away Team'], 'No Pick'))
-        # #
         results['Game Pick'] = np.where(
-            (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
+            (results['Overall Adv'] >= 10) &
+            (final['OVR'] > final['OPP OVR']) &
+            (final['DEF'] > final['OPP OFF']) &
+            (final['OFF'] > final['OPP DEF']),
             results['Home Team'], np.where(
-                (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
+                (results['Overall Adv'] <= -10) &
+                (final['OVR'] < final['OPP OVR']) &
+                (final['DEF'] < final['OPP OFF']) &
+                (final['OFF'] < final['OPP DEF']),
                 results['Away Team'], 'No Pick'))
-        #
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
-        #     results['Home Team'], np.where(
-        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
-        #         results['Away Team'], 'No Pick'))
-        #
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
-        #     results['Home Team'], np.where(
-        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
-        #         results['Away Team'], 'No Pick'))
-        # results['Game Pick'] = np.where((results['Offense Adv']>6) & (results['Defense Adv']>6), results['TEAM'],'No Pick')
-        # results['Game Pick'] = np.where((final['OVERALL'] - final['OPP OVERALL'] >= 5) & (final['OFFENSE'] - final['OPP DEFENSE'] >= 2.5) & (final['DEFENSE'] - final['OPP OFFENSE'] >= 2.5), results['TEAM'], 'No Pick')
         results = results.sort_values(by=['Overall Adv'], ascending=False)
         results = results[results['Game Pick'] != 'No Pick']
         print("---------Panda Picks: WEEK " + w + "-----------")
