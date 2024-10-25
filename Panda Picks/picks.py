@@ -4,6 +4,8 @@ import numpy as np
 def makePicks():
     weeks = ["1", '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # weeks = ["1"]
+    print("---------Panda Picks-----------")
+
     for w in weeks:
         # Set Grade Precision
         pd.set_option("display.precision", 2)
@@ -95,7 +97,6 @@ def makePicks():
                 results['Away Team'], 'No Pick'))
         results = results.sort_values(by=['Overall Adv'], ascending=False)
         results = results[results['Game Pick'] != 'No Pick']
-        print("---------Panda Picks: WEEK " + w + "-----------")
         results.to_csv(r"..\Panda Picks\Data\Picks\WEEK" + w + '.csv', index=False)
 
 

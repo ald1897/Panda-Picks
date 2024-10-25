@@ -32,7 +32,7 @@ def backtest():
 
         # Determine if the pick was correct and calculate wager and profit
         def check_pick(row):
-            bet_amount = 10  # Example bet amount
+            bet_amount = 5  # Example bet amount
             odds = -110  # Fixed odds for this calculation
             if row['Game Pick'] == row['Home Team']:
                 correct = row['Home Score'] + row['Home Line Close'] > row['Away Score']
@@ -44,7 +44,7 @@ def backtest():
 
         # Determine if the team won and calculate ML winnings
         def check_win_and_calculate_winnings(row):
-            bet_amount = 10  # Example bet amount
+            bet_amount = 5  # Example bet amount
             if row['Home Score'] > row['Away Score']:
                 winner = row['Home Team']
                 winnings = calculate_winnings(bet_amount, row['Home Odds Close']) if row['Game Pick'] == row[
@@ -65,7 +65,7 @@ def backtest():
         merged_df['ML Winnings'] = merged_df['ML Winnings'].apply(lambda x: f"${x:,.2f}")
 
         # Calculate total amount wagered and total profit
-        total_wagered = merged_df.shape[0] * 20  # Assuming each bet is $100
+        total_wagered = merged_df.shape[0] * 10  # Assuming each bet is $100
         total_profit = merged_df['ATS Winnings'].apply(lambda x: float(x.replace('$', '').replace(',', ''))).sum() + \
                        merged_df['ML Winnings'].apply(
                            lambda x: float(x.replace('$', '').replace(',', ''))).sum() - total_wagered
@@ -92,12 +92,12 @@ def backtest():
         total_ml_wins += ml_wins
 
         # Print the results for the current week
-        print(f"Results for {week}:")
-        print(merged_df[['Home Team', 'Away Team','Game Pick', 'Winner', 'ATS Pick Correct', 'Winner Pick Correct', 'ATS Winnings','ML Winnings', 'Total Amount Wagered', 'Total Profit']])
-        print(f"Total Amount Wagered: ${total_wagered:,.2f}")
-        print(f"Total Profit: ${total_profit:,.2f}")
-        print(f"Spread Win Percentage: {spread_win_percentage:.2f}%")
-        print(f"Money Line Win Percentage: {ml_win_percentage:.2f}%")
+        # print(f"Results for {week}:")
+        # print(merged_df[['Home Team', 'Away Team','Game Pick', 'Winner', 'ATS Pick Correct', 'Winner Pick Correct', 'ATS Winnings','ML Winnings', 'Total Amount Wagered', 'Total Profit']])
+        # print(f"Total Amount Wagered: ${total_wagered:,.2f}")
+        # print(f"Total Profit: ${total_profit:,.2f}")
+        # print(f"Spread Win Percentage: {spread_win_percentage:.2f}%")
+        # print(f"Money Line Win Percentage: {ml_win_percentage:.2f}%")
         print("\n")
 
     # Calculate overall win percentages

@@ -6,9 +6,10 @@ def matchups():
     weeks = ['1', '2', '3', '4', '5', '6','7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # weeks = ['9']
     # w = "1"
+    print("SCRAPING GAME DATA...")
+
     for w in weeks:
         # Scrape WEB DATA INTO table
-        print("SCRAPING WEEK " + w + " GAME DATA...")
         df = pd.read_html('https://nflgamedata.com/schedule.php?season=' + season + '&week=' + w)
         # keep only matchup table, get rid of other stuff
         # print("SETTING DATAFRAME.....")
@@ -48,9 +49,9 @@ def matchups():
 
         # print('SAVING DATA')
         df.to_csv('./Data/Matchups/matchups_WEEK' + w + '.csv', index=False)
-        print('DONE')
-        print('------------------------------------')
+
         # print(df)
+    print("DONE WITH GAME DATA")
 
 if __name__ == '__main__':
     matchups()
