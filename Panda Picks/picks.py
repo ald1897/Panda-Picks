@@ -4,7 +4,7 @@ import numpy as np
 def makePicks():
     weeks = ["1", '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # weeks = ["1"]
-    print("---------Panda Picks-----------")
+    # print("Making Picks...")
 
     for w in weeks:
         # Set Grade Precision
@@ -99,6 +99,7 @@ def makePicks():
         results = results[results['Game Pick'] != 'No Pick']
         results.to_csv(r"..\Panda Picks\Data\Picks\WEEK" + w + '.csv', index=False)
 
+    # print("Picks Made")
 
 if __name__ == '__main__':
     makePicks()

@@ -98,16 +98,16 @@ def backtest():
         # print(f"Total Profit: ${total_profit:,.2f}")
         # print(f"Spread Win Percentage: {spread_win_percentage:.2f}%")
         # print(f"Money Line Win Percentage: {ml_win_percentage:.2f}%")
-        print("\n")
+        # print("\n")
 
     # Calculate overall win percentages
     overall_spread_win_percentage = (total_spread_wins / total_spread_bets) * 100
     overall_ml_win_percentage = (total_ml_wins / total_ml_bets) * 100
 
     # Print the cumulative profit and overall win percentages
-    print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
-    print(f"Overall Spread Win Percentage: {overall_spread_win_percentage:.2f}%")
-    print(f"Overall Money Line Win Percentage: {overall_ml_win_percentage:.2f}%")
+    # print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
+    # print(f"Overall Spread Win Percentage: {overall_spread_win_percentage:.2f}%")
+    # print(f"Overall Money Line Win Percentage: {overall_ml_win_percentage:.2f}%")
 
 if __name__ == "__main__":
     backtest()
