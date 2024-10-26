@@ -7,7 +7,6 @@ def matchups():
     # weeks = ['9']
     # w = "1"
     # print("SCRAPING GAME DATA...")
-
     for w in weeks:
         # Scrape WEB DATA INTO table
         df = pd.read_html('https://nflgamedata.com/schedule.php?season=' + season + '&week=' + w)
