@@ -2,8 +2,8 @@ import pandas as pd
 from tabula import read_pdf
 
 def getSpreads():
-    df = pd.read_csv(r"Data/Spreads/nflSpreads.csv")
-    abrevs = pd.read_csv(r"Data/Grades/NFL_translations.csv")
+    df = pd.read_csv(r"../Data/Spreads/nflSpreads.csv")
+    abrevs = pd.read_csv(r"../Data/Grades/NFL_translations.csv")
     abrevs = abrevs.rename(columns={
         'TEAM': 'Home Team'})
     new_teams = pd.merge(df, abrevs, on='Home Team')
