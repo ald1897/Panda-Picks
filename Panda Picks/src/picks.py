@@ -11,7 +11,7 @@ def makePicks():
         pd.set_option("display.precision", 2)
         pd.options.display.float_format = '{:10,.2f}'.format
         # Load Team Grades for each position
-        grades = pd.read_csv("..\Panda Picks\Data\Grades\TeamGrades.csv")
+        grades = pd.read_csv("../Data/Grades/TeamGrades.csv")
         grades = grades.rename(columns={'TEAM': 'Home Team'})
         # Load & Matchups & spreads
         matchups = pd.read_csv(r"..\Panda Picks\Data\Matchups\matchups_WEEK" + w + ".csv")
