@@ -48,7 +48,7 @@ def main():
         week_df = process_data(data, week)
         all_weeks_data = pd.concat([all_weeks_data, week_df], ignore_index=True)
 
-    all_weeks_data.to_csv('nflSpreads.csv', index=False)
+    all_weeks_data.to_csv(r"../Data/Spreads/nflSpreads.csv", index=False)
 
 
 if __name__ == "__main__":

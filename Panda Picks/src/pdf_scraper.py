@@ -4,7 +4,7 @@ import logger
 
 
 def getGrades():
-    df =tabula.read_pdf(r"Data/Grades/PFFTeamGrades.pdf", pages=1)
+    df =tabula.read_pdf(r"../Data/Grades/PFFTeamGrades.pdf", pages=1)
     # print(df)
     abrevs = pd.read_csv(r"../Data/Grades/NFL_translations.csv")
     df = df[0]
@@ -55,7 +55,7 @@ def getGrades():
     new_teams = new_teams.rename(columns={'Abrev': 'TEAM'})
     new_teams = new_teams[
         ['TEAM', 'OVR', 'OFF', 'PASS', 'RUN', 'RECV', 'PBLK', 'RBLK', 'DEF', 'RDEF', 'TACK', 'PRSH', 'COV']]
-    new_teams.to_csv(r"Data/Grades/TeamGrades.csv", index=False)
+    new_teams.to_csv(r"../Data/Grades/TeamGrades.csv", index=False)
 
 
 if __name__ == '__main__':

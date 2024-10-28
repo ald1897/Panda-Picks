@@ -9,7 +9,7 @@ def calculate_winnings(bet_amount, odds):
     return total_payout
 
 def backtest():
-    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7']
+    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8']
     final_results = pd.DataFrame()
     cumulative_profit = 0
     total_spread_bets = 0
@@ -19,10 +19,10 @@ def backtest():
 
     for week in weeks:
         # Read the spread data from the CSV file
-        df = pd.read_csv('nflSpreads.csv')
+        df = pd.read_csv(r"../Data/Spreads/nflSpreads.csv")
 
         # Read the picks from the CSV file
-        picks_df = pd.read_csv(f'Data/Picks/{week}.csv')
+        picks_df = pd.read_csv(f'../Data/Picks/{week}.csv')
 
         # Merge the DataFrames on WEEK and Home Team
         merged_df = pd.merge(picks_df, df, left_on=['WEEK', 'Home Team', 'Away Team'],

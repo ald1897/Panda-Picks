@@ -31,7 +31,7 @@ def display_predictions():
     selected_week = st.selectbox("Select Week", weeks)
 
     try:
-        predictions_df = pd.read_csv(f'Data/Picks/{selected_week}.csv')
+        predictions_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
         st.subheader(f"Predictions for {selected_week}")
 
         # Display the table with better styling
@@ -71,11 +71,11 @@ def display_predictions():
 
 def display_picks_data():
     st.header("Picks Data")
-    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7']
+    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8']
     selected_week = st.selectbox("Select Week", weeks)
 
     try:
-        picks_df = pd.read_csv(f'Data/Picks/{selected_week}.csv')
+        picks_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
         st.subheader(f"Picks for {selected_week}")
         st.table(picks_df)
     except FileNotFoundError as e:
@@ -97,8 +97,8 @@ def calculate_winnings(bet_amount, odds):
 
 def process_week_data(week, bet_amount, bankroll):
     try:
-        df = pd.read_csv('nflSpreads.csv')
-        picks_df = pd.read_csv(f'Data/Picks/{week}.csv')
+        df = pd.read_csv('../Data/Spreads/nflSpreads.csv')
+        picks_df = pd.read_csv(f'../Data/Picks/{week}.csv')
     except FileNotFoundError as e:
         logging.error(f"File not found: {e}")
         return None
@@ -280,14 +280,14 @@ def main():
     selected_page = st.sidebar.selectbox("Select Page", pages)
 
     if selected_page == "Week Stats":
-        weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7']
+        weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8']
         selected_week = st.selectbox("Select Week", weeks)
         week_data = process_week_data(selected_week, bet_amount, bankroll)
         if week_data:
             display_week_stats(week_data, selected_week)
     elif selected_page == "Summary Stats":
         # Process all weeks to update overall_stats
-        weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7']
+        weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8']
         for week in weeks:
             process_week_data(week, bet_amount, bankroll)
         display_summary_stats()

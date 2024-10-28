@@ -14,7 +14,7 @@ def makePicks():
         grades = pd.read_csv("../Data/Grades/TeamGrades.csv")
         grades = grades.rename(columns={'TEAM': 'Home Team'})
         # Load & Matchups & spreads
-        matchups = pd.read_csv(r"..\Panda Picks\Data\Matchups\matchups_WEEK" + w + ".csv")
+        matchups = pd.read_csv(f"../Data/Matchups/matchups_WEEK{w}.csv")
         matchups = matchups.dropna(axis=0, how='all')
         # merge grades with home teams on TEAM column
         matchups = pd.merge(matchups, grades, on="Home Team")
@@ -34,7 +34,7 @@ def makePicks():
             'COV': 'OPP COV'
         })
         matchups = pd.merge(matchups, grades, on="Away Team")
-        matchups.to_csv(r"..\Panda Picks\Data\Matchups\grades_matchups_WEEK" + w + ".csv", index=False)
+        matchups.to_csv(f"../Data/Matchups/grades_matchups_WEEK{w}.csv", index=False)
         col_list = matchups.columns.tolist()
         matchups = matchups[[
             # 'Total',
@@ -85,19 +85,19 @@ def makePicks():
         results['Coverage Adv'] = final['COV'] - ((final['OPP RECV'] + final['OPP PBLK']) / 2)
 
         results['Game Pick'] = np.where(
-            (results['Overall Adv'] >= 10) &
-            (final['OVR'] > final['OPP OVR']) &
-            (final['DEF'] > final['OPP OFF']) &
-            (final['OFF'] > final['OPP DEF']),
+            (results['Overall Adv'] >= 3) &
+            (final['OVR'] - final['OPP OVR'] >= 3) &
+            (final['DEF'] - final['OPP OFF'] >= 3) &
+            (final['OFF'] - final['OPP DEF'] >= 3),
             results['Home Team'], np.where(
-                (results['Overall Adv'] <= -10) &
-                (final['OVR'] < final['OPP OVR']) &
-                (final['DEF'] < final['OPP OFF']) &
-                (final['OFF'] < final['OPP DEF']),
+                (results['Overall Adv'] <= -3) &
+                (final['OVR'] - final['OPP OVR'] <=-3) &
+                (final['DEF'] - final['OPP OFF'] <=-3) &
+                (final['OFF'] - final['OPP DEF'] <=-3),
                 results['Away Team'], 'No Pick'))
         results = results.sort_values(by=['Overall Adv'], ascending=False)
         results = results[results['Game Pick'] != 'No Pick']
-        results.to_csv(r"..\Panda Picks\Data\Picks\WEEK" + w + '.csv', index=False)
+        results.to_csv(f"../Data/Picks/WEEK{w}.csv", index=False)
 
     # print("Picks Made")
 

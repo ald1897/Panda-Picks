@@ -54,7 +54,7 @@ def getSpreads():
         'Abrev_x': 'Home Team',
         'Date': 'Game Date'})
 
-    spreads.to_csv('./Data/Spreads/spreads.csv', index=False)
+    spreads.to_csv(r"../Data/Spreads/spreads.csv", index=False)
 
 
 if __name__ == '__main__':
