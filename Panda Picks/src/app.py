@@ -26,29 +26,25 @@ overall_stats = {
 
 def display_predictions():
     st.header("Predictions for Future Matchups")
-    weeks = ['WEEK8', 'WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17',
-             'WEEK18']  # Add future weeks
+    weeks = ['WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
     selected_week = st.selectbox("Select Week", weeks)
 
     try:
         predictions_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
+        predictions_df = predictions_df[
+            ['Home Team', 'Away Team', 'Home Spread', 'Overall Adv', 'Offense Adv', 'Defense Adv', 'Game Pick']]
+
+        # Take absolute values of the relevant columns
+        predictions_df['Overall Adv'] = predictions_df['Overall Adv'].abs()
+        predictions_df['Offense Adv'] = predictions_df['Offense Adv'].abs()
+        predictions_df['Defense Adv'] = predictions_df['Defense Adv'].abs()
+
         st.subheader(f"Predictions for {selected_week}")
 
         # Display the table with better styling
         st.dataframe(predictions_df.style.format({
             'Home Spread': '{:.1f}',
-            'Away Spread': '{:.1f}',
-            'Overall Adv': '{:.1f}',
-            'Offense Adv': '{:.1f}',
-            'Passing Adv': '{:.1f}',
-            'Pass Block Adv': '{:.1f}',
-            'Receving Adv': '{:.1f}',
-            'Running Adv': '{:.1f}',
-            'Run Block Adv': '{:.1f}',
-            'Defense Adv': '{:.1f}',
-            'Run Defense Adv': '{:.1f}',
-            'Pass Rush Adv': '{:.1f}',
-            'Coverage Adv': '{:.1f}'
+            'Away Spread': '{:.1f}'
         }))
 
         # Create a chart to visualize the predictions
@@ -69,19 +65,49 @@ def display_predictions():
     except pd.errors.EmptyDataError as e:
         st.error(f"Empty data error: {e}")
 
-def display_picks_data():
-    st.header("Picks Data")
-    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8']
-    selected_week = st.selectbox("Select Week", weeks)
+def create_comparison_chart(home_team, away_team, grades_df):
+    home_grades = grades_df[grades_df['TEAM'] == home_team].iloc[0]
+    away_grades = grades_df[grades_df['TEAM'] == away_team].iloc[0]
 
-    try:
-        picks_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
-        st.subheader(f"Picks for {selected_week}")
-        st.table(picks_df)
-    except FileNotFoundError as e:
-        st.error(f"File not found: {e}")
-    except pd.errors.EmptyDataError as e:
-        st.error(f"Empty data error: {e}")
+    categories = ['OVR', 'OFF', 'PASS', 'RUN', 'RECV', 'PBLK', 'RBLK', 'DEF', 'RDEF', 'TACK', 'PRSH', 'COV']
+    home_values = [home_grades[cat] for cat in categories]
+    away_values = [away_grades[cat] for cat in categories]
+
+    # Ensure all arrays are of the same length
+    if len(categories) == len(home_values) == len(away_values):
+        data = pd.DataFrame({
+            'Category': categories * 2,
+            'Team': [home_team] * len(categories) + [away_team] * len(categories),
+            'Grade': home_values + away_values
+        })
+
+        chart = alt.Chart(data).mark_bar().encode(
+            x=alt.X('Category:N', title='Category'),
+            y=alt.Y('Grade:Q', title='Grade'),
+            color='Team:N',
+            xOffset='Team:N'
+        ).properties(
+            width=800,
+            height=800
+        )
+
+        return chart
+    else:
+        raise ValueError("All arrays must be of the same length")
+
+# def display_picks_data():
+#     st.header("Picks Data")
+#     weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8', 'WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
+#     selected_week = st.selectbox("Select Week", weeks)
+#
+#     try:
+#         picks_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
+#         st.subheader(f"Picks for {selected_week}")
+#         st.table(picks_df)
+#     except FileNotFoundError as e:
+#         st.error(f"File not found: {e}")
+#     except pd.errors.EmptyDataError as e:
+#         st.error(f"Empty data error: {e}")
 
 def calculate_winnings(bet_amount, odds):
     try:
@@ -181,12 +207,14 @@ def process_week_data(week, bet_amount, bankroll):
     }
 
 def display_matchup_info(matchup_data):
+    logging.info(f"Displaying matchup information for {matchup_data['Home Team']} vs {matchup_data['Away Team']}")
+    logging.info(f"Matchup data: {matchup_data}")
     st.subheader(f"Matchup: {matchup_data['Home Team']} vs {matchup_data['Away Team']}")
     st.write("### Game Details")
     st.write(f"**Home Team:** {matchup_data['Home Team']}")
     st.write(f"**Away Team:** {matchup_data['Away Team']}")
     st.write(f"**Game Pick:** {matchup_data['Game Pick']}")
-    st.write(f"**Winner:** {matchup_data['Winner']}")
+    st.write(f"**Winner:** {matchup_data['Game Pick']}")
     st.write(f"**ATS Pick Correct:** {matchup_data['ATS Pick Correct']}")
     st.write(f"**Winner Pick Correct:** {matchup_data['Winner Pick Correct']}")
     st.write(f"**ATS Winnings:** {matchup_data['ATS Winnings']}")
@@ -197,6 +225,32 @@ def display_matchup_info(matchup_data):
     st.write(f"**Away Line Close:** {matchup_data['Away Line Close']}")
     st.write(f"**Home Odds Close:** {matchup_data['Home Odds Close']}")
     st.write(f"**Away Odds Close:** {matchup_data['Away Odds Close']}")
+
+def display_picks_data():
+    st.header("Picks Data")
+    weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8', 'WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
+    selected_week = st.selectbox("Select Week", weeks)
+
+    try:
+        picks_df = pd.read_csv(f'../Data/Picks/{selected_week}.csv')
+        grades_df = pd.read_csv('../Data/Grades/TeamGrades.csv')
+        st.subheader(f"Picks for {selected_week}")
+        st.table(picks_df)
+
+        # Add a dropdown menu to select a matchup
+        matchups = picks_df[['Home Team', 'Away Team']].apply(lambda row: f"{row['Home Team']} vs {row['Away Team']}", axis=1)
+        selected_matchup = st.selectbox("Select Matchup", matchups)
+
+        # Display detailed matchup information and chart
+        if selected_matchup:
+            home_team, away_team = selected_matchup.split(" vs ")
+            matchup_data = picks_df[(picks_df['Home Team'] == home_team) & (picks_df['Away Team'] == away_team)].iloc[0]
+            st.altair_chart(create_comparison_chart(home_team, away_team, grades_df))
+
+    except FileNotFoundError as e:
+        st.error(f"File not found: {e}")
+    except pd.errors.EmptyDataError as e:
+        st.error(f"Empty data error: {e}")
 
 def display_week_stats(week_data, week):
     st.subheader(f"Results for {week}")
@@ -210,14 +264,14 @@ def display_week_stats(week_data, week):
         st.metric(label="Spread Win Percentage", value=f"{week_data['spread_win_percentage']:.2f}%")
         st.metric(label="Money Line Win Percentage", value=f"{week_data['ml_win_percentage']:.2f}%")
 
-    # Add a dropdown menu to select a matchup
-    matchups = week_data['data'][['Home Team', 'Away Team']].apply(lambda row: f"{row['Home Team']} vs {row['Away Team']}", axis=1)
-    selected_matchup = st.selectbox("Select Matchup", matchups)
-
-    # Display detailed matchup information
-    if selected_matchup:
-        matchup_data = week_data['data'][matchups == selected_matchup].iloc[0]
-        display_matchup_info(matchup_data)
+    # # Add a dropdown menu to select a matchup
+    # matchups = week_data['data'][['Home Team', 'Away Team']].apply(lambda row: f"{row['Home Team']} vs {row['Away Team']}", axis=1)
+    # selected_matchup = st.selectbox("Select Matchup", matchups)
+    #
+    # # Display detailed matchup information
+    # if selected_matchup:
+    #     matchup_data = week_data['data'][matchups == selected_matchup].iloc[0]
+    #     display_matchup_info(matchup_data)
 
 def display_summary_stats():
     st.header("Summary Statistics")
