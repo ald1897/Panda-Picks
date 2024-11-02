@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-
+import sqlite3
 
 # Function to fetch data from the API
 def fetch_data(week):
@@ -8,7 +8,6 @@ def fetch_data(week):
     response = requests.get(url)
     response.raise_for_status()  # Raise an error for bad status codes
     return response.json()
-
 
 # Function to process the data and create a DataFrame
 def process_data(data, week):
@@ -27,29 +26,32 @@ def process_data(data, week):
 
         processed_data.append({
             "WEEK": f"WEEK{week}",
-            "Home Team": home_team,
-            "Away Team": away_team,
-            "Home Score": home_score,
-            "Away Score": away_score,
-            "Home Odds Close": home_odds_close,
-            "Away Odds Close": away_odds_close,
-            "Home Line Close": home_line_close,
-            "Away Line Close": away_line_close
+            "Home_Team": home_team,
+            "Away_Team": away_team,
+            "Home_Score": home_score,
+            "Away_Score": away_score,
+            "Home_Odds_Close": home_odds_close,
+            "Away_Odds_Close": away_odds_close,
+            "Home_Line_Close": home_line_close,
+            "Away_Line_Close": away_line_close
         })
 
     return pd.DataFrame(processed_data)
 
-
 # Main function to fetch, process, and save the data
 def main():
-    all_weeks_data = pd.DataFrame()
+    conn = sqlite3.connect('db/nfl_data.db')
+    cursor = conn.cursor()
+
+
     for week in range(1, 18):  # Change the range as needed
         data = fetch_data(week)
         week_df = process_data(data, week)
-        all_weeks_data = pd.concat([all_weeks_data, week_df], ignore_index=True)
+        week_df.to_sql('spreads', conn, if_exists='append', index=False)
 
-    all_weeks_data.to_csv(r"../Data/Spreads/nflSpreads.csv", index=False)
-
+    # Commit and close the connection
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     main()

@@ -16,10 +16,10 @@ for week in weeks:
     four_team_combos = list(combinations(teams, 4))
 
     # Display results
+    print("Week:", week)
     print("2-Team Combos:", two_team_combos)
     print("3-Team Combos:", three_team_combos)
     print("4-Team Combos:", four_team_combos)
-
     print("Total Bets:", len(two_team_combos) + len(three_team_combos) + len(four_team_combos))
 
     # Save results to csv

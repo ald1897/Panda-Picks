@@ -1,20 +1,16 @@
 import pandas as pd
 import tabula
+import sqlite3
 import logger
 
-
 def getGrades():
-    df =tabula.read_pdf(r"../Data/Grades/PFFTeamGrades.pdf", pages=1)
-    # print(df)
+    df = tabula.read_pdf(r"../Data/Grades/PFFTeamGrades.pdf", pages=1)
     abrevs = pd.read_csv(r"../Data/Grades/NFL_translations.csv")
     df = df[0]
     df = df.drop(columns=['Unnamed: 0', 'Unnamed: 1', 'POINTS', 'Unnamed: 3'])
     new = df['OFFENSE'].str.split(" ", n=1, expand=True)
-    # making separate PBLK column from new data frame
     df['PASS BLOCK'] = new[0]
-    # making separate RCEV column from new data frame
     df['RECEIVING'] = new[1]
-    # Dropping old Name columns
     df.drop(columns=['OFFENSE'], inplace=True)
     df.drop(columns=['SPEC'], inplace=True)
     df = df.rename(columns={
@@ -35,7 +31,6 @@ def getGrades():
     df.dropna(inplace=True)
     new_teams = pd.merge(df, abrevs, on='TEAM')
     new_teams.drop(columns=[
-        # 'RANK',
         'TEAM',
         'Unnamed: 2',
         'Unnamed: 3',
@@ -55,8 +50,18 @@ def getGrades():
     new_teams = new_teams.rename(columns={'Abrev': 'TEAM'})
     new_teams = new_teams[
         ['TEAM', 'OVR', 'OFF', 'PASS', 'RUN', 'RECV', 'PBLK', 'RBLK', 'DEF', 'RDEF', 'TACK', 'PRSH', 'COV']]
-    new_teams.to_csv(r"../Data/Grades/TeamGrades.csv", index=False)
 
+    # Connect to SQLite database
+    conn = sqlite3.connect('db/nfl_data.db')
+    cursor = conn.cursor()
+
+
+    # Insert data into the table
+    new_teams.to_sql('grades', conn, if_exists='replace', index=False)
+
+    # Commit and close the connection
+    conn.commit()
+    conn.close()
 
 if __name__ == '__main__':
     getGrades()
