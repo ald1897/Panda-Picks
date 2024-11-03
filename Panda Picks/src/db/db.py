@@ -1,5 +1,20 @@
 import sqlite3
 
+def drop_tables():
+    conn = sqlite3.connect('nfl_data.db')
+    cursor = conn.cursor()
+
+    cursor.execute('DROP TABLE IF EXISTS grades')
+    cursor.execute('DROP TABLE IF EXISTS advanced_stats')
+    cursor.execute('DROP TABLE IF EXISTS spreads')
+    cursor.execute('DROP TABLE IF EXISTS picks')
+    cursor.execute('DROP TABLE IF EXISTS backtest_results')
+    cursor.execute('DROP TABLE IF EXISTS matchups')
+    cursor.execute('DROP TABLE IF EXISTS picks_results')
+
+    conn.commit()
+    conn.close()
+
 def create_tables():
     conn = sqlite3.connect('nfl_data.db')
     cursor = conn.cursor()
@@ -55,8 +70,8 @@ def create_tables():
             WEEK TEXT,
             Home_Team TEXT,
             Away_Team TEXT,
-            Home_Spread REAL,
-            Away_Spread REAL,
+            Home_Line_Close REAL,
+            Away_Line_Close REAL,
             Game_Pick TEXT,
             Overall_Adv REAL,
             Offense_Adv REAL,
@@ -85,18 +100,6 @@ def create_tables():
             spread_win_percentage REAL,
             ml_win_percentage REAL,
             perfect_weeks INTEGER
-        )
-    ''')
-
-    # Create matchups table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS matchups (
-            Week TEXT,
-            Home_Team TEXT,
-            Away_Team TEXT,
-            Home_Spread REAL,
-            Away_Spread REAL,
-            PRIMARY KEY (Week, Home_Team, Away_Team)
         )
     ''')
 
@@ -140,4 +143,5 @@ def create_tables():
     conn.close()
 
 if __name__ == '__main__':
+    drop_tables()
     create_tables()

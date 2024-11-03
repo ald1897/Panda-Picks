@@ -1,7 +1,6 @@
 import logging
 import time
 import pdf_scraper
-import matchups
 import picks
 import create_spreads
 import backtest
@@ -18,10 +17,6 @@ def start():
     print('Starting Advanced Stats')
     get_advanced_stats.main()
     print('Done Advanced Stats')
-    time.sleep(0.1)
-    print('Starting Matchup Data')
-    matchups.matchups()
-    print("Done Matchup Data")
     time.sleep(0.1)
     print('Starting Picks')
     picks.makePicks()
