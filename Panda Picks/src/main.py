@@ -1,39 +1,40 @@
 import logging
 import time
 import pdf_scraper
-import matchups
 import picks
 import create_spreads
 import backtest
 import get_advanced_stats
-import db
+import db.db as db
 
 
 def start():
     logging.basicConfig(filename='panda_picks.log', level=logging.DEBUG)
-    print('Starting PFF Grades')
+    logging.info('Starting Panda Picks')
+    # logging.info('Dropping Tables')
+    # db.drop_tables()
+    # logging.info('Creating Tables')
+    # db.create_tables()
+    # time.sleep(0.1)
+    logging.info('Starting PFF Grades')
     pdf_scraper.getGrades()
-    print('Done PFF Grades')
+    logging.info('Done PFF Grades')
     time.sleep(0.1)
-    print('Starting Advanced Stats')
+    logging.info('Starting Advanced Stats')
     get_advanced_stats.main()
-    print('Done Advanced Stats')
+    logging.info('Done Advanced Stats')
     time.sleep(0.1)
-    print('Starting Matchup Data')
-    matchups.matchups()
-    print("Done Matchup Data")
-    time.sleep(0.1)
-    print('Starting Picks')
-    picks.makePicks()
-    print("Done Making Picks")
-    time.sleep(0.1)
-    print("Creating Spread Info")
+    logging.info("Creating Spread Info")
     create_spreads.main()
-    print("Spread Info Created")
+    logging.info("Spread Info Created")
     time.sleep(0.1)
-    print("Backtesting")
+    logging.info('Starting Picks')
+    picks.makePicks()
+    logging.info("Done Making Picks")
+    time.sleep(0.1)
+    logging.info("Backtesting")
     backtest.backtest()
-    print('Backtesting completed')
+    logging.info('Backtesting completed')
 
 
 if __name__ == '__main__':

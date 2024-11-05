@@ -1,5 +1,20 @@
 import sqlite3
 
+def drop_tables():
+    conn = sqlite3.connect('nfl_data.db')
+    cursor = conn.cursor()
+
+    cursor.execute('DROP TABLE IF EXISTS grades')
+    cursor.execute('DROP TABLE IF EXISTS advanced_stats')
+    cursor.execute('DROP TABLE IF EXISTS spreads')
+    cursor.execute('DROP TABLE IF EXISTS picks')
+    cursor.execute('DROP TABLE IF EXISTS backtest_results')
+    cursor.execute('DROP TABLE IF EXISTS picks_results')
+    cursor.execute('DROP TABLE IF EXISTS teaser_results')
+
+    conn.commit()
+    conn.close()
+
 def create_tables():
     conn = sqlite3.connect('nfl_data.db')
     cursor = conn.cursor()
@@ -7,7 +22,7 @@ def create_tables():
     # Create grades table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS grades (
-            TEAM TEXT PRIMARY KEY,
+            TEAM TEXT,
             OVR REAL,
             OFF REAL,
             PASS REAL,
@@ -19,7 +34,8 @@ def create_tables():
             RDEF REAL,
             TACK REAL,
             PRSH REAL,
-            COV REAL
+            COV REAL,
+            PRIMARY KEY (TEAM)
         )
     ''')
 
@@ -50,13 +66,14 @@ def create_tables():
         )
     ''')
 
+    # Create picks table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS picks (
             WEEK TEXT,
             Home_Team TEXT,
             Away_Team TEXT,
-            Home_Spread REAL,
-            Away_Spread REAL,
+            Home_Line_Close REAL,
+            Away_Line_Close REAL,
             Game_Pick TEXT,
             Overall_Adv REAL,
             Offense_Adv REAL,
@@ -75,7 +92,7 @@ def create_tables():
     # Create backtest_results table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS backtest_results (
-            WEEK TEXT PRIMARY KEY,
+            WEEK TEXT,
             total_wagered REAL,
             total_spread_wins INTEGER,
             total_spread_bets INTEGER,
@@ -84,23 +101,13 @@ def create_tables():
             total_profit REAL,
             spread_win_percentage REAL,
             ml_win_percentage REAL,
-            perfect_weeks INTEGER
+            perfect_weeks INTEGER,
+            weekly_profit REAL,
+            PRIMARY KEY (WEEK)
         )
     ''')
 
-    # Create matchups table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS matchups (
-            Week TEXT,
-            Home_Team TEXT,
-            Away_Team TEXT,
-            Home_Spread REAL,
-            Away_Spread REAL,
-            PRIMARY KEY (Week, Home_Team, Away_Team)
-        )
-    ''')
-
-    # Create pick_results table
+    # Create picks_results table
     cursor.execute('''
                 CREATE TABLE IF NOT EXISTS picks_results (
                     WEEK TEXT,
@@ -112,9 +119,10 @@ def create_tables():
                     Away_Odds_Close REAL,
                     Home_Line_Close REAL,
                     Away_Line_Close REAL,
-                    Home_Spread REAL,
-                    Away_Spread REAL,
                     Game_Pick TEXT,
+                    Winner TEXT,
+                    Correct_Pick INTEGER,
+                    Pick_Covered_Spread INTEGER,
                     Overall_Adv REAL,
                     Offense_Adv REAL,
                     Defense_Adv REAL,
@@ -125,19 +133,29 @@ def create_tables():
                     Defense_Adv_Sig TEXT,
                     Off_Comp_Adv_Sig TEXT,
                     Def_Comp_Adv_Sig TEXT,
-                    ATS_Pick_Correct INTEGER,
-                    ATS_Winnings TEXT,
-                    Winner TEXT,
-                    ML_Winnings TEXT,
-                    Winner_Pick_Correct INTEGER,
-                    Total_Amount_Wagered REAL,
-                    Total_Profit REAL,
                     PRIMARY KEY (WEEK, Home_Team, Away_Team)
                 )
             ''')
+
+    # create teaser_results table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS teaser_results (
+            Combo TEXT,
+            Winnings REAL,
+            Type TEXT,
+            WEEK TEXT,
+            Total_Amount_Wagered REAL,
+            Weekly_Profit REAL,
+            Total_Profit REAL,
+            Total_Profit_Over_All_Weeks REAL,
+            Total_Balance REAL,
+            PRIMARY KEY (Combo, WEEK)
+        )
+    ''')
 
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
+    drop_tables()
     create_tables()
