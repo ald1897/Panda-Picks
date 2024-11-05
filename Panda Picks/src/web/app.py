@@ -24,7 +24,6 @@ overall_stats = {
     'weekly_wagered': []  # Store weekly amount wagered
 }
 
-
 def display_predictions():
     st.header("Predictions for Future Matchups")
     weeks = ['WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
@@ -212,18 +211,6 @@ def create_comparison_chart(home_team, away_team, grades_df):
     else:
         raise ValueError("All arrays must be of the same length")
 
-def calculate_winnings(bet_amount, odds):
-    try:
-        if odds > 0:
-            profit = bet_amount * (odds / 100)
-        else:
-            profit = bet_amount / (abs(odds) / 100)
-        total_payout = bet_amount + profit
-        return total_payout
-    except Exception as e:
-        logging.error(f"Error calculating winnings: {e}")
-        return 0
-
 def display_matchup_info(matchup_data):
     logging.info(f"Displaying matchup information for {matchup_data['Home Team']} vs {matchup_data['Away Team']}")
     logging.info(f"Matchup data: {matchup_data}")
@@ -232,11 +219,6 @@ def display_matchup_info(matchup_data):
     st.write(f"**Home Team:** {matchup_data['Home Team']}")
     st.write(f"**Away Team:** {matchup_data['Away Team']}")
     st.write(f"**Game Pick:** {matchup_data['Game Pick']}")
-    st.write(f"**Winner:** {matchup_data['Game Pick']}")
-    st.write(f"**ATS Pick Correct:** {matchup_data['ATS Pick Correct']}")
-    st.write(f"**Winner Pick Correct:** {matchup_data['Winner Pick Correct']}")
-    st.write(f"**ATS Winnings:** {matchup_data['ATS Winnings']}")
-    st.write(f"**ML Winnings:** {matchup_data['ML Winnings']}")
     st.write(f"**Home Score:** {matchup_data['Home Score']}")
     st.write(f"**Away Score:** {matchup_data['Away Score']}")
     st.write(f"**Home Line Close:** {matchup_data['Home Line Close']}")
@@ -253,85 +235,186 @@ def display_week_stats():
     try:
         conn = sqlite3.connect('../db/nfl_data.db')
 
-        # Read the picks data
-        picks_query = f"SELECT * FROM picks WHERE WEEK = '{selected_week}'"
-        picks_df = pd.read_sql(picks_query, conn)
+        # # Read the picks data
+        # picks_query = f"SELECT * FROM picks WHERE WEEK = '{selected_week}'"
+        # picks_df = pd.read_sql(picks_query, conn)
+        #
+        # # Read the results data
+        # results_query = f"SELECT * FROM picks_results WHERE WEEK = '{selected_week}'"
+        # results_df = pd.read_sql(results_query, conn)
 
-        # Read the results data
-        results_query = f"SELECT * FROM picks_results WHERE WEEK = '{selected_week}'"
-        results_df = pd.read_sql(results_query, conn)
+        # Read the backtest results data
+        backtest_query = f"SELECT * FROM backtest_results WHERE WEEK = '{selected_week}'"
+        backtest_df = pd.read_sql(backtest_query, conn)
 
         conn.close()
 
         logging.info(f"Displaying weekly stats for {selected_week}")
-        logging.info(f"Picks data: {picks_df}")
-        logging.info(f"Results data: {results_df}")
+        # logging.info(f"Picks data: {picks_df}")
+        # logging.info(f"Results data: {results_df}")
+        logging.info(f"Backtest data: {backtest_df}")
 
 
-        # Drop the duplicate columns from the results data compared to the pick_df except for Home Team and Away Team
-        results_df = results_df.drop(
-            columns=['WEEK', 'Home_Line_Close', 'Away_Line_Close', 'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
-                     'Off_Comp_Adv', 'Def_Comp_Adv', 'Off_Comp_Adv_sig', 'Def_Comp_Adv_sig', 'Overall_Adv_sig',
-                     'Offense_Adv_sig', 'Defense_Adv_sig'])
+        #
+        # # Drop the duplicate columns from the results data compared to the pick_df except for Home Team and Away Team
+        # results_df = results_df.drop(
+        #     columns=['WEEK', 'Home_Line_Close', 'Away_Line_Close', 'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
+        #              'Off_Comp_Adv', 'Def_Comp_Adv', 'Off_Comp_Adv_Sig', 'Def_Comp_Adv_Sig', 'Overall_Adv_Sig',
+        #              'Offense_Adv_Sig', 'Defense_Adv_Sig'])
+        #
+        # # Merge the picks data with the results data but do not duplicate columns only add new columns from results_df
+        # picks_df = pd.merge(picks_df, results_df, on=['Home_Team', 'Away_Team'], how='left')
 
-        # Merge the picks data with the results data but do not duplicate columns only add new columns from results_df
-        picks_df = pd.merge(picks_df, results_df, on=['Home_Team', 'Away_Team'], how='left')
+        # Calculate the win percentage
+        total_bets = len(backtest_df)
+        winning_bets = len(backtest_df[backtest_df['Winnings'] > 0])
+        win_percentage = (winning_bets / total_bets) * 100 if total_bets > 0 else 0
 
-        # print(picks_df.columns)
+        backtest_df['Total_Amount_Wagered'] = backtest_df['Total_Amount_Wagered'] / total_bets
+        backtest_df['Weekly_Profit'] = backtest_df['Weekly_Profit'] / total_bets
 
         # Apply styles to the table
         def highlight_advantage(val):
             color = 'color: #80caf2' if val > 0 else 'color: lightcoral'
             return color
 
-        display_list = ['Home_Team', 'Away_Team', 'Home_Line_Close', 'Home_Odds_Close', 'Game_Pick', 'Winner',
-                        'Overall_Adv', 'Offense_Adv', 'Defense_Adv', 'Off_Comp_Adv', 'Def_Comp_Adv', 'ATS_Pick_Correct',
-                        'Winner_Pick_Correct', 'ATS_Winnings', 'ML_Winnings']
+        display_list = ['Combo', 'Winnings', 'Total_Amount_Wagered']
+        #
+        styled_picks_df = backtest_df[display_list].style.applymap(highlight_advantage,
+                                                                subset=['Winnings'])
+        #
+        # styled_picks_df = backtest_df.format({
+        #     'Winnings': '${:,.2f}',
+        #     'Total_Amount_Wagered': '${:,.2f}',
+        #     'Weekly_Profit': '${:,.2f}',
+        #     'Total_Profit': '${:,.2f}'
+        # })
 
-        styled_picks_df = picks_df[display_list].style.applymap(highlight_advantage,
-                                                                subset=['Overall_Adv', 'Offense_Adv', 'Defense_Adv',
-                                                                        'Off_Comp_Adv', 'Def_Comp_Adv'])
-
+        # change the dataframe so that the dollar amounts are displayed correctly
         styled_picks_df = styled_picks_df.format({
-            'Home Spread': '{:.1f}',
-            'Away Spread': '{:.1f}',
-            'Home Line Close': '{:.1f}',
-            'Home Odds Close': '{:.2f}',
-            'ATS Pick Correct': lambda x: 'Yes' if x else 'No',
-            'Winner Pick Correct': lambda x: 'Yes' if x else 'No'
-            # 'ATS Winnings': lambda x: f"${float(x):,.2f}" if x else '$0.00',
-            # 'ML Winnings': lambda x: f"${float(x):,.2f}" if x else '$0.00'
+            'Winnings': '${:,.2f}',
+            'Total_Amount_Wagered': '${:,.2f}',
+            'Weekly_Profit': '${:,.2f}'
         })
+
 
         # Display the picks and support advantage information
         st.subheader("Picks and Support Advantage Information")
-        # only display the columns in the display_list
+
         st.table(styled_picks_df)
 
-        conn = sqlite3.connect('../db/nfl_data.db')
-        # Read the weekly stats data
-        weekly_stats_query = "SELECT * FROM backtest_results"
-        weekly_stats_df = pd.read_sql(weekly_stats_query, conn)
-        conn.close()
 
-        week_data = weekly_stats_df[weekly_stats_df['WEEK'] == selected_week].iloc[0]
 
-        # Create a 4-column layout for the metrics
-        col1, col2, col3, col4 = st.columns(4)
-
+        # Display the win percentage in a column format
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         with col1:
-            st.metric(label="Total Amount Wagered", value=f"${week_data['total_wagered']:,.2f}")
+            st.metric(label="Win Percentage", value=f"{win_percentage:.2f}%")
         with col2:
-            st.metric(label="Spread Win Percentage", value=f"{week_data['spread_win_percentage']:.2f}%")
+            st.metric(label="Total Bets", value=total_bets)
         with col3:
-            st.metric(label="Money Line Win Percentage", value=f"{week_data['ml_win_percentage']:.2f}%")
+            st.metric(label="Total Wins", value=winning_bets)
         with col4:
-            st.metric(label="Total Profit", value=f"${week_data['total_profit']:,.2f}")
+            st.metric(label="Total Winnings", value=f"${backtest_df['Winnings'].sum():,.2f}")
+        with col5:
+            st.metric(label="Total Amount Wagered", value=f"${backtest_df['Total_Amount_Wagered'].sum():,.2f}")
+        with col6:
+            st.metric(label="Weekly Profit", value=f"${backtest_df['Weekly_Profit'].sum():,.2f}")
 
     except FileNotFoundError as e:
         st.error(f"File not found: {e}")
     except pd.errors.EmptyDataError as e:
         st.error(f"Empty data error: {e}")
+# def display_week_stats():
+#     st.header("Weekly Statistics")
+#     weeks = ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5', 'WEEK6', 'WEEK7', 'WEEK8', 'WEEK9', 'WEEK10', 'WEEK11',
+#              'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
+#     selected_week = st.selectbox("Select Week", weeks)
+#
+#     try:
+#         conn = sqlite3.connect('../db/nfl_data.db')
+#
+#         # Read the picks data
+#         picks_query = f"SELECT * FROM picks WHERE WEEK = '{selected_week}'"
+#         picks_df = pd.read_sql(picks_query, conn)
+#
+#         # Read the results data
+#         results_query = f"SELECT * FROM picks_results WHERE WEEK = '{selected_week}'"
+#         results_df = pd.read_sql(results_query, conn)
+#
+#         conn.close()
+#
+#         logging.info(f"Displaying weekly stats for {selected_week}")
+#         logging.info(f"Picks data: {picks_df}")
+#         logging.info(f"Results data: {results_df}")
+#
+#         # Drop the duplicate columns from the results data compared to the pick_df except for Home Team and Away Team
+#         results_df = results_df.drop(
+#             columns=['WEEK', 'Home_Line_Close', 'Away_Line_Close', 'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
+#                      'Off_Comp_Adv', 'Def_Comp_Adv', 'Off_Comp_Adv_Sig', 'Def_Comp_Adv_Sig', 'Overall_Adv_Sig',
+#                      'Offense_Adv_Sig', 'Defense_Adv_Sig'])
+#
+#         # Merge the picks data with the results data but do not duplicate columns only add new columns from results_df
+#         picks_df = pd.merge(picks_df, results_df, on=['Home_Team', 'Away_Team'], how='left')
+#
+#         # Apply styles to the table
+#         def highlight_advantage(val):
+#             color = 'color: #80caf2' if val > 0 else 'color: lightcoral'
+#             return color
+#
+#         display_list = ['Home_Team', 'Away_Team', 'Home_Line_Close', 'Home_Odds_Close', 'Game_Pick',
+#                         'Overall_Adv', 'Offense_Adv', 'Defense_Adv', 'Off_Comp_Adv', 'Def_Comp_Adv']
+#
+#         styled_picks_df = picks_df[display_list].style.applymap(highlight_advantage,
+#                                                                 subset=['Overall_Adv', 'Offense_Adv', 'Defense_Adv',
+#                                                                         'Off_Comp_Adv', 'Def_Comp_Adv'])
+#
+#         styled_picks_df = styled_picks_df.format({
+#             'Home Spread': '{:.1f}',
+#             'Away Spread': '{:.1f}',
+#             'Home Line Close': '{:.1f}',
+#             'Home Odds Close': '{:.2f}',
+#             'Away Line Close': '{:.1f}',
+#             'Away Odds Close': '{:.2f}'
+#         })
+#
+#         # Display the picks and support advantage information
+#         st.subheader("Picks and Support Advantage Information")
+#         st.table(styled_picks_df)
+#
+#         conn = sqlite3.connect('../db/nfl_data.db')
+#         # Read the weekly stats data
+#         weekly_stats_query = "SELECT * FROM backtest_results"
+#         weekly_stats_df = pd.read_sql(weekly_stats_query, conn)
+#         conn.close()
+#
+#         print(weekly_stats_df)
+#         # Create a dataframe of the weekly stats data for the selected week
+#         week_data = weekly_stats_df[weekly_stats_df['WEEK'] == selected_week]
+#         print(week_data)
+#
+#         # week_data = weekly_stats_df[weekly_stats_df['WEEK'] == selected_week].iloc[0]
+#
+#         # A Bet is considered a win if the "Winnings" amount is > 0, Calculate the win percentages based on this
+#         week_data['spread_win_percentage'] = ()
+#
+#
+#
+#         # # Create a 4-column layout for the metrics
+#         # col1, col2, col3, col4 = st.columns(4)
+#         #
+#         # with col1:
+#         #     st.metric(label="Total Amount Wagered", value=f"${week_data['Total_Amount_Wagered']:,.2f}")
+#         # with col2:
+#         #     st.metric(label="Spread Win Percentage", value=f"{week_data['spread_win_percentage']:.2f}%")
+#         # with col3:
+#         #     st.metric(label="Money Line Win Percentage", value=f"{week_data['ml_win_percentage']:.2f}%")
+#         # with col4:
+#         #     st.metric(label="Total Profit", value=f"${week_data['Total_Profit']:,.2f}")
+#
+#     except FileNotFoundError as e:
+#         st.error(f"File not found: {e}")
+#     except pd.errors.EmptyDataError as e:
+#         st.error(f"Empty data error: {e}")
 
 def display_summary_stats():
     st.header("Summary Statistics")
@@ -343,23 +426,20 @@ def display_summary_stats():
     conn.close()
 
     # Calculate overall statistics
-    overall_stats['cumulative_profit'] = weekly_stats_df['total_profit'].sum()
+    overall_stats['cumulative_profit'] = weekly_stats_df['Total_Profit'].sum()
     overall_stats['total_spread_bets'] = weekly_stats_df['total_spread_bets'].sum()
     overall_stats['total_spread_wins'] = weekly_stats_df['total_spread_wins'].sum()
     overall_stats['total_ml_bets'] = weekly_stats_df['total_ml_bets'].sum()
     overall_stats['total_ml_wins'] = weekly_stats_df['total_ml_wins'].sum()
-    overall_stats['total_amount_wagered'] = weekly_stats_df['total_wagered'].sum()
+    overall_stats['total_amount_wagered'] = weekly_stats_df['Total_Amount_Wagered'].sum()
     overall_stats['total_wins'] = weekly_stats_df['total_ml_wins'].sum() + weekly_stats_df[
         'total_spread_wins'].sum()
     overall_stats['total_bets'] = weekly_stats_df['total_ml_bets'].sum() + weekly_stats_df[
         'total_spread_bets'].sum()
     overall_stats['total_losses'] = overall_stats['total_bets'] - overall_stats['total_wins']
-    # Calculate perfect weeks by check if total wins == total bets, if yes then perfect week
     overall_stats['perfect_weeks'] = weekly_stats_df['perfect_weeks'].sum()
-    overall_stats['weekly_profits'] = weekly_stats_df['total_profit'].cumsum()
-    overall_stats['weekly_wagered'] = weekly_stats_df['total_wagered']
-
-    print(overall_stats)
+    overall_stats['weekly_profits'] = weekly_stats_df['Total_Profit'].cumsum()
+    overall_stats['weekly_wagered'] = weekly_stats_df['Total_Amount_Wagered']
 
     # Calculate overall win percentages and profit
     overall_spread_win_percentage = (overall_stats['total_spread_wins'] / overall_stats[
@@ -385,31 +465,6 @@ def display_summary_stats():
         st.metric(label="Total Spread Wins", value=overall_stats['total_spread_wins'])
         st.metric(label="Total ML Bets", value=overall_stats['total_ml_bets'])
         st.metric(label="Total ML Wins", value=overall_stats['total_ml_wins'])
-
-    # Create a DataFrame for the combined chart
-    chart_data = pd.DataFrame({
-        'Week': list(range(1, len(overall_stats['weekly_profits']) + 1)),
-        'Cumulative Profit': overall_stats['weekly_profits'],
-        'Weekly Wagered': overall_stats['weekly_wagered']
-    })
-
-    # Create the combined chart using Altair with the same y-axis
-    line1 = alt.Chart(chart_data).mark_line(color='blue').encode(
-        x='Week',
-        y='Cumulative Profit'
-    )
-
-    line2 = alt.Chart(chart_data).mark_line(color='orange').encode(
-        x='Week',
-        y='Weekly Wagered'
-    )
-
-    combined_chart = alt.layer(line1, line2).resolve_scale(
-        y='shared'
-    ).properties(
-        height=600
-    )
-    st.altair_chart(combined_chart, use_container_width=True)
 
 def display_welcome_page():
     st.title("Welcome to the NFL Betting Analysis App")

@@ -100,24 +100,26 @@ def makePicks():
             ]
 
             for col in advantage_columns:
-                results[f'{col}_sig'] = np.where(results[col] > 2, 'home significant', np.where(
-                    results[col] < -2, 'away significant', 'insignificant'))
+                results[f'{col}_sig'] = np.where(results[col] > 0, 'home significant', np.where(
+                    results[col] < 0, 'away significant', 'insignificant'))
 
             composite_columns = [
                 'Off_Comp_Adv', 'Def_Comp_Adv'
             ]
 
             for col in composite_columns:
-                results[f'{col}_sig'] = np.where(results[col] > std, 'home significant', np.where(
-                    results[col] < -(std), 'away significant', 'insignificant'))
+                results[f'{col}_sig'] = np.where(results[col] > std/3, 'home significant', np.where(
+                    results[col] < -(std/3), 'away significant', 'insignificant'))
 
-            results['Game_Pick'] = np.where(
-                (results[[f'{col}_sig' for col in advantage_columns]].eq('home significant').all(axis=1)) |
-                (results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1)),
-                results['Home_Team'], np.where(
-                    (results[[f'{col}_sig' for col in advantage_columns]].eq('away significant').all(axis=1)) |
-                    (results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1)),
-                    results['Away_Team'], 'No Pick'))
+            results['Game_Pick'] = (
+                np.where(
+                    (results[[f'{col}_sig' for col in advantage_columns]].eq('home significant').all(axis=1) | results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1)) &
+                    (results[[f'{col}_sig' for col in composite_columns]].eq('home significant').all(axis=1) | results[[f'{col}_sig' for col in composite_columns]].eq('insignificant').all(axis=1)),
+                results['Home_Team'],
+                np.where(
+                    (results[[f'{col}_sig' for col in advantage_columns]].eq('away significant').all(axis=1) | results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1)) &
+                    (results[[f'{col}_sig' for col in composite_columns]].eq('away significant').all(axis=1) | results[[f'{col}_sig' for col in composite_columns]].eq('insignificant').all(axis=1)),
+                results['Away_Team'], 'No Pick')))
 
             results = results.sort_values(by=['Overall_Adv'], ascending=False)
             results = results[results['Game_Pick'] != 'No Pick']
