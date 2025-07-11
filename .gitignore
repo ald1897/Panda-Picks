@@ -1,0 +1,6 @@
+# Ignore all CSV files in the /Matchups and /Picks directories
+/Data/Matchups/*.csv
+/Data/Picks/*.csv
+
+# Ignore the .idea folder
+.idea/
