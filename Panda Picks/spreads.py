@@ -1,61 +1,94 @@
 import pandas as pd
-from tabula import read_pdf
-
-def getSpreads():
-    df = pd.read_csv(r"Data/Spreads/nflSpreads.csv")
-    abrevs = pd.read_csv(r"Data/Grades/NFL_translations.csv")
-    abrevs = abrevs.rename(columns={
-        'TEAM': 'Home Team'})
-    new_teams = pd.merge(df, abrevs, on='Home Team')
-    new_teams.drop(columns=[
-        # 'RANK',
-        'Home Team',
-        'Unnamed: 2',
-        'Unnamed: 3',
-        'Unnamed: 4',
-        'Unnamed: 5',
-        'Unnamed: 6',
-        'Unnamed: 7',
-        'Unnamed: 8',
-        'Unnamed: 9',
-        'Unnamed: 10',
-        'Unnamed: 11',
-        'Unnamed: 12',
-        'Unnamed: 13',
-        'Unnamed: 14',
-        'Unnamed: 15',
-        'Unnamed: 16'], inplace=True)
-    # Rename team column to bring in away team abrevs
-    abrevs = abrevs.rename(columns={
-        'Home Team': 'Away Team'})
-    # abrevs = abrevs.rename(columns={
-    #     'Abrev': 'Home Team'})
-    spreads = pd.merge(new_teams, abrevs, on='Away Team')
-    spreads.drop(columns=[
-        # 'RANK',
-        'Away Team',
-        'Unnamed: 2',
-        'Unnamed: 3',
-        'Unnamed: 4',
-        'Unnamed: 5',
-        'Unnamed: 6',
-        'Unnamed: 7',
-        'Unnamed: 8',
-        'Unnamed: 9',
-        'Unnamed: 10',
-        'Unnamed: 11',
-        'Unnamed: 12',
-        'Unnamed: 13',
-        'Unnamed: 14',
-        'Unnamed: 15',
-        'Unnamed: 16'], inplace=True)
-    spreads = spreads.rename(columns={
-        'Abrev_y': 'Away Team',
-        'Abrev_x': 'Home Team',
-        'Date': 'Game Date'})
-
-    spreads.to_csv('./Data/Spreads/spreads.csv', index=False)
+from pathlib import Path
+import logging
 
 
-if __name__ == '__main__':
+def getSpreads(data_dir=None):
+    """
+    Process NFL betting spread data by merging with team abbreviations
+    and cleaning the dataset for backtesting.
+
+    Args:
+        data_dir (Path, optional): Base directory for data files
+
+    Returns:
+        bool: True if processing was successful, False otherwise
+    """
+    try:
+        # Set up logging
+        logger = logging.getLogger("PandaPicks") if logging.getLogger("PandaPicks").handlers else None
+        log = logger.info if logger else print
+
+        # Define paths using Path objects
+        if data_dir is None:
+            data_dir = Path("Data")
+
+        spreads_file = data_dir / "Spreads" / "nflSpreads.csv"
+        abrevs_file = data_dir / "Grades" / "NFL_translations.csv"
+        output_file = data_dir / "Spreads" / "spreads.csv"
+
+        # Check if input files exist
+        if not spreads_file.exists():
+            raise FileNotFoundError(f"Spreads file not found: {spreads_file}")
+
+        if not abrevs_file.exists():
+            raise FileNotFoundError(f"Abbreviations file not found: {abrevs_file}")
+
+        # Ensure output directory exists
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Read input files
+        log(f"Loading spread data from {spreads_file}")
+        spreads_df = pd.read_csv(spreads_file)
+
+        log(f"Loading team abbreviations from {abrevs_file}")
+        abrevs_df = pd.read_csv(abrevs_file, usecols=['TEAM', 'Abrev'])  # Only read needed columns
+
+        # Process home team data
+        log("Processing home team data...")
+        home_abrevs = abrevs_df.rename(columns={"TEAM": "Home Team"})
+        merged_df = pd.merge(spreads_df, home_abrevs, on="Home Team")
+
+        # Filter unnamed columns in one operation
+        home_cols_to_drop = ["Home Team"] + [col for col in merged_df.columns if col.startswith("Unnamed:")]
+        merged_df = merged_df.drop(columns=home_cols_to_drop)
+
+        # Process away team data
+        log("Processing away team data...")
+        away_abrevs = abrevs_df.rename(columns={"TEAM": "Away Team"})
+        merged_df = pd.merge(merged_df, away_abrevs, on="Away Team")
+
+        # Filter unnamed columns in one operation
+        away_cols_to_drop = ["Away Team"] + [col for col in merged_df.columns if col.startswith("Unnamed:")]
+        merged_df = merged_df.drop(columns=away_cols_to_drop)
+
+        # Rename columns for consistency
+        result_df = merged_df.rename(columns={
+            "Abrev_x": "Home Team",
+            "Abrev_y": "Away Team",
+            "Date": "Game Date"
+        })
+
+        # Save processed data with optimized settings
+        log(f"Saving processed spread data to {output_file}")
+        result_df.to_csv(output_file, index=False, float_format='%.2f')
+
+        log(f"Successfully processed spread data and saved to {output_file}")
+        return True
+
+    except FileNotFoundError as e:
+        if logger:
+            logger.error(f"Error: Could not find file - {e}")
+        else:
+            print(f"Error: Could not find file - {e}")
+        return False
+    except Exception as e:
+        if logger:
+            logger.error(f"Error processing spread data: {e}")
+        else:
+            print(f"Error processing spread data: {e}")
+        return False
+
+
+if __name__ == "__main__":
     getSpreads()

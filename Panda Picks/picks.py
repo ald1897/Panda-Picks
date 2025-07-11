@@ -1,117 +1,131 @@
 import pandas as pd
 import numpy as np
+from pathlib import Path
+import logging
 
-def makePicks():
-    weeks = ["1", '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
-    # weeks = ["1"]
-    for w in weeks:
-        # Set Grade Precision
-        pd.set_option("display.precision", 2)
-        pd.options.display.float_format = '{:10,.2f}'.format
-        # Load Team Grades for each position
-        grades = pd.read_csv("..\Panda Picks\Data\Grades\TeamGrades.csv")
-        grades = grades.rename(columns={'TEAM': 'Home Team'})
-        # Load & Matchups & spreads
-        matchups = pd.read_csv(r"..\Panda Picks\Data\Matchups\matchups_WEEK" + w + ".csv")
-        matchups = matchups.dropna(axis=0, how='all')
-        # merge grades with home teams on TEAM column
-        matchups = pd.merge(matchups, grades, on="Home Team")
-        grades = grades.rename(columns={
-            'Home Team': 'Away Team',
-            'OVR': 'OPP OVR',
-            'OFF': 'OPP OFF',
-            'PASS': 'OPP PASS',
-            'PBLK': 'OPP PBLK',
-            'RECV': 'OPP RECV',
-            'RUN': 'OPP RUN',
-            'RBLK': 'OPP RBLK',
-            'DEF': 'OPP DEF',
-            'RDEF': 'OPP RDEF',
-            'TACK': 'OPP TACK',
-            'PRSH': 'OPP PRSH',
-            'COV': 'OPP COV'
-        })
-        matchups = pd.merge(matchups, grades, on="Away Team")
-        matchups.to_csv(r"..\Panda Picks\Data\Matchups\grades_matchups_WEEK" + w + ".csv", index=False)
-        col_list = matchups.columns.tolist()
-        matchups = matchups[[
-            # 'Total',
-            'Game Date',
-            'Home Team',
-            'Home Spread',
-            'Away Team',
-            'Away Spread',
-            'OVR',
-            'OFF',
-            'PASS',
-            'PBLK',
-            'RECV',
-            'RUN',
-            'RBLK',
-            'DEF',
-            'RDEF',
-            'TACK',
-            'PRSH',
-            'COV',
-            'OPP OVR',
-            'OPP OFF',
-            'OPP PASS',
-            'OPP PBLK',
-            'OPP RECV',
-            'OPP RUN',
-            'OPP RBLK',
-            'OPP DEF',
-            'OPP RDEF',
-            'OPP TACK',
-            'OPP PRSH',
-            'OPP COV'
-        ]]
-        final = matchups
-        results = final[['Game Date', 'Home Team', 'Home Spread', 'Away Team', 'Away Spread']].copy()
-        # Evaluate Offensive vs Defensive Matchups & Defensive vs OFfensive Matchups, Highlight any that win both
-        results['Overall Adv'] = final['OVR'] - final['OPP OVR']
-        results['Offense Adv'] = final['OFF'] - final['OPP DEF']
-        results['Passing Adv'] = final['PASS'] - ((final['OPP PRSH'] + final['OPP COV']) / 2)
-        results['Pass Block Adv'] = final['PBLK'] - final['OPP PRSH']
-        results['Receving Adv'] = final['RECV'] - final['OPP COV']
-        results['Running Adv'] = final['RUN'] - final['OPP RDEF']
-        results['Run Block Adv'] = final['RBLK'] - final['OPP RDEF']
-        results['Defense Adv'] = final['DEF'] - final['OPP OFF']
-        results['Run Defense Adv'] = final['RDEF'] - ((final['OPP RUN'] + final['OPP RBLK']) / 2)
-        results['Tackling Adv'] = final['TACK'] - ((final['OPP RUN'] + final['OPP RECV']) / 2)
-        results['Pass Rush Adv'] = final['PRSH'] - ((final['OPP PBLK'] + final['OPP PASS']) / 2)
-        results['Coverage Adv'] = final['COV'] - ((final['OPP RECV'] + final['OPP PBLK']) / 2)
 
-        # Ovr vs ovr, def vs opp off,
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10),
-        #         results['Home Team'],
-        #         np.where((results['Overall Adv'] >= 10),
-        #             results['Away Team'], 'No Pick'))
-        # #
-        results['Game Pick'] = np.where(
-            (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
-            results['Home Team'], np.where(
-                (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
-                results['Away Team'], 'No Pick'))
-        #
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
-        #     results['Home Team'], np.where(
-        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
-        #         results['Away Team'], 'No Pick'))
-        #
-        # results['Game Pick'] = np.where(
-        #     (results['Overall Adv'] >= 10) & (final['OVR'] > final['OPP OVR']) & (final['DEF'] > final['OPP OFF']),
-        #     results['Home Team'], np.where(
-        #         (results['Overall Adv'] <= -10) & (final['OVR'] < final['OPP OVR']) & (final['DEF'] < final['OPP OFF']),
-        #         results['Away Team'], 'No Pick'))
-        # results['Game Pick'] = np.where((results['Offense Adv']>6) & (results['Defense Adv']>6), results['TEAM'],'No Pick')
-        # results['Game Pick'] = np.where((final['OVERALL'] - final['OPP OVERALL'] >= 5) & (final['OFFENSE'] - final['OPP DEFENSE'] >= 2.5) & (final['DEFENSE'] - final['OPP OFFENSE'] >= 2.5), results['TEAM'], 'No Pick')
-        results = results.sort_values(by=['Overall Adv'], ascending=False)
-        results = results[results['Game Pick'] != 'No Pick']
-        print("---------Panda Picks: WEEK " + w + "-----------")
-        results.to_csv(r"..\Panda Picks\Data\Picks\WEEK" + w + '.csv', index=False)
+def makePicks(season="2022", data_dir=None):
+    """
+    Generate weekly NFL game picks based on team grades and matchups.
+
+    Args:
+        season (str): NFL season year
+        data_dir (Path, optional): Base directory for data files
+    """
+    try:
+        # Set up logging
+        logger = logging.getLogger("PandaPicks") if logging.getLogger("PandaPicks").handlers else None
+        log = logger.info if logger else print
+
+        # Define paths using Path objects
+        if data_dir is None:
+            data_dir = Path("Data")
+
+        grades_file = data_dir / "Grades" / "TeamGrades.csv"
+        matchups_dir = data_dir / "Matchups"
+        picks_dir = data_dir / "Picks"
+        picks_dir.mkdir(parents=True, exist_ok=True)
+
+        # Check if grades file exists
+        if not grades_file.exists():
+            raise FileNotFoundError(f"Team grades file not found: {grades_file}")
+
+        # Load team grades once for efficiency
+        log(f"Loading team grades from {grades_file}")
+        grades = pd.read_csv(grades_file)
+
+        # Create away team grades mapping in one operation
+        away_grades = grades.copy()
+        rename_map = {col: f'OPP {col}' for col in away_grades.columns if col != 'TEAM'}
+        away_grades = away_grades.rename(columns=rename_map)
+
+        # Process each week
+        for week in range(1, 19):
+            week_str = str(week)
+            matchup_file = matchups_dir / f"matchups_WEEK{week_str}.csv"
+
+            if not matchup_file.exists():
+                log(f"Matchup file for WEEK {week_str} not found. Skipping...")
+                continue
+
+            log(f"Processing WEEK {week_str}...")
+
+            # Load matchup data efficiently
+            matchups = pd.read_csv(matchup_file).dropna(how="all")
+
+            # Perform merge operations more efficiently
+            # First rename team column for home team merge
+            home_grades = grades.rename(columns={'TEAM': 'Home Team'})
+            matchups = pd.merge(matchups, home_grades, on="Home Team")
+
+            # Then rename team column for away team merge
+            away_grades = away_grades.rename(columns={'TEAM': 'Away Team'})
+            matchups = pd.merge(matchups, away_grades, on="Away Team")
+
+            # Calculate all advantages in a single step using vectorized operations
+            results = matchups.copy()
+
+            # Define advantage calculations in a dictionary for cleaner code
+            advantage_calcs = {
+                'Overall Adv': 'OVR - `OPP OVR`',
+                'Offense Adv': 'OFF - `OPP DEF`',
+                'Passing Adv': 'PASS - ((`OPP PRSH` + `OPP COV`) / 2)',
+                'Pass Block Adv': 'PBLK - `OPP PRSH`',
+                'Receving Adv': 'RECV - `OPP COV`',
+                'Running Adv': 'RUN - `OPP RDEF`',
+                'Run Block Adv': 'RBLK - `OPP RDEF`',
+                'Defense Adv': 'DEF - `OPP OFF`',
+                'Run Defense Adv': 'RDEF - ((`OPP RUN` + `OPP RBLK`) / 2)',
+                'Tackling Adv': 'TACK - ((`OPP RUN` + `OPP RECV`) / 2)',
+                'Pass Rush Adv': 'PRSH - ((`OPP PBLK` + `OPP PASS`) / 2)',
+                'Coverage Adv': 'COV - ((`OPP RECV` + `OPP PBLK`) / 2)'
+            }
+
+            # Apply all advantage calculations
+            for adv_name, formula in advantage_calcs.items():
+                results[adv_name] = results.eval(formula)
+
+            # Generate game picks using vectorized conditions
+            conditions = [
+                (results['Overall Adv'] >= 10) &
+                (matchups['OVR'] > matchups['OPP OVR']) &
+                (matchups['DEF'] > matchups['OPP OFF']),
+
+                (results['Overall Adv'] <= -10) &
+                (matchups['OVR'] < matchups['OPP OVR']) &
+                (matchups['DEF'] < matchups['OPP OFF'])
+            ]
+            choices = [results['Home Team'], results['Away Team']]
+            results['Game Pick'] = np.select(conditions, choices, default='No Pick')
+
+            # Filter and save results
+            results = results[results['Game Pick'] != 'No Pick']
+
+            # Select only needed columns for output
+            pick_columns = [
+                               'Game Date', 'Home Team', 'Home Spread', 'Away Team',
+                               'Away Spread', 'Game Pick', 'Overall Adv'
+                           ] + list(advantage_calcs.keys())
+
+            # Filter out empty results
+            if len(results) == 0:
+                log(f"No picks generated for WEEK {week_str}")
+                continue
+
+            # Sort by advantage and save
+            results = results[pick_columns].sort_values(by=['Overall Adv'], ascending=False)
+            output_file = picks_dir / f"WEEK{week_str}.csv"
+            results.to_csv(output_file, index=False, float_format='%.2f')
+            log(f"Saved {len(results)} picks for WEEK {week_str} to {output_file}")
+
+        return True
+
+    except FileNotFoundError as e:
+        log(f"File not found: {e}")
+        return False
+    except Exception as e:
+        log(f"Error processing picks: {e}")
+        return False
 
 
 if __name__ == '__main__':
