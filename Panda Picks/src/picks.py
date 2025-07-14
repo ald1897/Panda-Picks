@@ -9,7 +9,7 @@ def makePicks():
     weeks = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # weeks = ['9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
     # Connect to SQLite database
-    conn = sqlite3.connect('db/nfl_data.db')
+    conn = sqlite3.connect('nfl_data.db')
     cursor = conn.cursor()
 
     try:

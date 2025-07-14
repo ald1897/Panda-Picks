@@ -156,7 +156,7 @@ def main():
     def_url = "https://sumersports.com/wp-content/uploads/data/def_team.json"
 
     # Connect to SQLite database
-    conn = sqlite3.connect('db/nfl_data.db')
+    conn = sqlite3.connect('nfl_data.db')
 
     off_data = fetch_advanced_stats(off_url)
     save_advanced_stats(off_data, conn)

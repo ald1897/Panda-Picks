@@ -19,7 +19,7 @@ def adjust_spread(row, teaser_points=6):
     return row
 
 for week in weeks:
-    conn = sqlite3.connect('db/nfl_data.db')
+    conn = sqlite3.connect('nfl_data.db')
     cursor = conn.cursor()
     # List of teams from the picks table in nfl_data.db
     df = pd.read_sql_query(f"SELECT * FROM picks WHERE week = 'WEEK{week}'", conn)

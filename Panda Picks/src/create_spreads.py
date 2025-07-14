@@ -40,7 +40,7 @@ def process_data(data, week):
 
 # Main function to fetch, process, and save the data
 def main():
-    conn = sqlite3.connect('db/nfl_data.db')
+    conn = sqlite3.connect('nfl_data.db')
     cursor = conn.cursor()
 
 
