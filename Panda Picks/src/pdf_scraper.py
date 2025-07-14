@@ -20,11 +20,26 @@ def extract_team_grades(pdf_path):
         if not tables or len(tables) == 0:
             raise ValueError("No tables found in PDF")
 
+        # # Print tables to a txt fiile for debugging
+        # with open("debug_tables.txt", "w") as f:
+        #     print(tables)
+        #     f.write(str(tables))
+        # if len(tables) < 2:
+        #     raise ValueError("Expected at least two tables in PDF, found: {}".format(len(tables)))
+        # # Print the first table for debugging
+        # print("Tables extracted from PDF:")
+        # for i, table in enumerate(tables):
+        #     print(f"Table {i}:")
+        #     print(table.head())
+        print(tables)
         df = tables[0]
+        print(df.head())
+        print(df.columns)
 
         # Keep only needed columns and rename in one operation
         cols_to_keep = ['OFFENSE', 'DEFENSE', 'SPEC'] + [col for col in df.columns if col.startswith('Unnamed:')]
         df = df[cols_to_keep]
+        print(df.head())
 
         # Split the OFFENSE column more efficiently
         split_cols = df['OFFENSE'].str.split(" ", n=1, expand=True)
@@ -53,6 +68,9 @@ def extract_team_grades(pdf_path):
 
         # Rename columns and drop rows with NaN values
         df = df.rename(columns=rename_map).dropna()
+
+        print("Extracted team grades successfully.")
+        # print(df.head())  # Display the first few rows for verification
 
         return df
 
@@ -106,11 +124,18 @@ def getGrades():
     Process NFL team grades from PDF and save to CSV using optimized methods.
     """
     try:
+
+        # Get the directory where the script is located
+        script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+        # Then construct paths relative to that
+        pdf_file = script_dir.parent / "Data" / "Grades" / "PFFTeamGrades.pdf"
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Looking for PDF at: {pdf_file.absolute()}")
         # Define file paths using Path
-        data_dir = Path("Data")
-        pdf_file = data_dir / "Grades" / "PFFTeamGrades.pdf"
-        abbrev_file = data_dir / "Grades" / "NFL_translations.csv"
-        output_file = data_dir / "Grades" / "TeamGrades.csv"
+        # pdf_file = Path("Panda Picks/Data/Grades/PFFTeamGrades.pdf")
+        # pdf_file = data_dir / "Grades" / "PFFTeamGrades.pdf"
+        abbrev_file = script_dir.parent / "Data" / "Grades" / "NFL_Translations.csv"
+        output_file = script_dir.parent / "Data" / "Grades" / "TeamGrades.csv"
 
         # Check if files exist
         if not pdf_file.exists():
@@ -123,6 +148,7 @@ def getGrades():
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         print(f"Extracting team grades from {pdf_file}...")
+
         grades_df = extract_team_grades(pdf_file)
 
         print(f"Merging with team abbreviations from {abbrev_file}...")

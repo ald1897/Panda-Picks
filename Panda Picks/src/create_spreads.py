@@ -4,7 +4,7 @@ import sqlite3
 
 # Function to fetch data from the API
 def fetch_data(week):
-    url = f"https://www.pff.com/api/scoreboard/ticker?league=nfl&season=2024&week={week}"
+    url = f"https://www.pff.com/api/scoreboard/ticker?league=nfl&season=2025&week={week}"
     response = requests.get(url)
     response.raise_for_status()  # Raise an error for bad status codes
     return response.json()
