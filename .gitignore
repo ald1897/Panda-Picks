@@ -23,3 +23,5 @@ env/
 .venv/
 .env/
 ENV/
+/venv/
+/venv/*
