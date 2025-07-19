@@ -25,3 +25,30 @@ env/
 ENV/
 /venv/
 /venv/*
+
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+ENV/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# IDE settings
+.idea/
+.vscode/
+*.swp

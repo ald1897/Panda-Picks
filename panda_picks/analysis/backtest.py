@@ -2,6 +2,8 @@ import pandas as pd
 import sqlite3
 from itertools import combinations
 import logging
+from panda_picks.db.database import get_connection
+from panda_picks import config
 
 def calculate_winnings(bet_amount, odds):
     if odds > 0:
@@ -23,14 +25,14 @@ def check_teaser_pick(row, team):
         return row['Away_Score'] + row['Away_Line_Close'] > row['Home_Score']
 
 def backtest():
-    weeks = ['WEEK1','WEEK2','WEEK3','WEEK4','WEEK5','WEEK6','WEEK7','WEEK8','WEEK9']
+    weeks = ['WEEK1','WEEK2','WEEK3','WEEK4','WEEK5','WEEK6','WEEK7','WEEK8','WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
     final_results = pd.DataFrame()
     cumulative_profit = 0
     initial_balance = 500  # Starting balance
     current_balance = initial_balance
 
     conn = sqlite3.connect('nfl_data.db')
-    cursor = conn.cursor()
+    conn = get_connection()
 
     for week in weeks:
         df = pd.read_sql_query("SELECT * FROM spreads", conn)
@@ -49,6 +51,12 @@ def backtest():
         logging.info(f'{week} backtest')
         logging.info(f"Teams: {teams}")
 
+        # check if game has a score
+        if merged_df['Home_Score'].isnull().any() or merged_df['Away_Score'].isnull().any():
+            logging.warning(f"Missing scores for week {week}. Skipping this week.")
+            continue
+        merged_df['Home_Score'] = pd.to_numeric(merged_df['Home_Score'], errors='coerce')
+        merged_df['Away_Score'] = pd.to_numeric(merged_df['Away_Score'], errors='coerce')
         merged_df['Winner'] = merged_df.apply(lambda x: x['Home_Team'] if x['Home_Score'] > x['Away_Score'] else x['Away_Team'], axis=1)
         merged_df['Correct_Pick'] = merged_df.apply(lambda x: x['Game_Pick'] == x['Winner'], axis=1)
         merged_df['Pick_Covered_Spread'] = merged_df.apply(lambda x: x['Game_Pick'] == x['Home_Team'] if x['Home_Score'] + x['Home_Line_Close'] > x['Away_Score'] else x['Game_Pick'] == x['Away_Team'], axis=1)
@@ -104,6 +112,7 @@ def backtest():
         merged_df.to_sql('picks_results', conn, if_exists='append', index=False)
         teaser_df.to_sql('teaser_results', conn, if_exists='append', index=False)
 
+    # At the end of the function, modify this section:
     final_results = pd.read_sql_query("SELECT * FROM teaser_results", conn)
     final_results['Total_Profit'] = cumulative_profit
     final_results.to_sql('backtest_results', conn, if_exists='replace', index=False)
@@ -113,9 +122,13 @@ def backtest():
     print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
     print(f"Final Balance: ${current_balance:,.2f}")
 
-    # Calculate individual bet win percentage. A win is when winnings is > 0
-    win_percentage = final_results[final_results['Winnings'] > 0].shape[0] / final_results.shape[0]
-    print(f"Individual Bet Win Percentage: {win_percentage * 100:.2f}%")
+    # Add check to prevent division by zero
+    if final_results.shape[0] > 0:
+        win_percentage = final_results[final_results['Winnings'] > 0].shape[0] / final_results.shape[0]
+        print(f"Individual Bet Win Percentage: {win_percentage * 100:.2f}%")
+    else:
+        print("No bet results available to calculate win percentage.")
+
     conn.close()
 
 if __name__ == "__main__":

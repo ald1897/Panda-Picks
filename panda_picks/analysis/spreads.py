@@ -2,6 +2,9 @@ import requests
 import pandas as pd
 import sqlite3
 
+from panda_picks.db.database import get_connection
+from panda_picks import config
+
 # Function to fetch data from the API
 def fetch_data(week):
     url = f"https://www.pff.com/api/scoreboard/ticker?league=nfl&season=2025&week={week}"
@@ -41,7 +44,7 @@ def process_data(data, week):
 # Main function to fetch, process, and save the data
 def main():
     conn = sqlite3.connect('nfl_data.db')
-    cursor = conn.cursor()
+    conn = get_connection()
 
 
     for week in range(1, 18):  # Change the range as needed

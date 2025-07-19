@@ -2,83 +2,125 @@ import sqlite3
 import time
 from pathlib import Path
 import os
+from panda_picks import config
+
+
 import pandas as pd
+# def store_grades_data(csv_path=None, db_path=None):
+#     """
+#     Store team grades data in the database from a CSV file.
+#
+#     Args:
+#         csv_path: Path to the CSV file containing grades data (optional)
+#         db_path: Path to the database file (optional)
+#
+#     Returns:
+#         bool: True if successful, False otherwise
+#     """
+#     try:
+#
+#
+#         start_time = time.time()
+#         print(f"[{time.strftime('%H:%M:%S')}] Starting grades data storage process...")
+#
+#         # Determine paths if not provided
+#         script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+#
+#         if csv_path is None:
+#             csv_path = script_dir.parent / "Data" / "Grades" / "TeamGrades.csv"
+#             print(f"[{time.strftime('%H:%M:%S')}] CSV path not provided, using default: {csv_path}")
+#         else:
+#             print(f"[{time.strftime('%H:%M:%S')}] Using provided CSV path: {csv_path}")
+#
+#         # Set absolute database path - important to avoid creating multiple DB files
+#         if db_path is None:
+#             # Use root project directory for database
+#             db_path = script_dir.parent / "nfl_data.db"
+#             print(f"[{time.strftime('%H:%M:%S')}] Using database at: {db_path}")
+#
+#         # Verify file exists
+#         if not Path(csv_path).exists():
+#             print(f"[{time.strftime('%H:%M:%S')}] ERROR: CSV file not found at {csv_path}")
+#             raise FileNotFoundError(f"Grades CSV file not found: {csv_path}")
+#
+#         print(f"[{time.strftime('%H:%M:%S')}] Loading grades data from {csv_path}...")
+#
+#         # Load the data
+#         grades_df = pd.read_csv(csv_path)
+#         print(f"[{time.strftime('%H:%M:%S')}] Loaded grades dataframe with shape: {grades_df.shape}")
+#         print(f"[{time.strftime('%H:%M:%S')}] Columns in grades data: {grades_df.columns.tolist()}")
+#
+#         # Connect to the database using absolute path
+#         print(f"[{time.strftime('%H:%M:%S')}] Connecting to database at: {db_path}")
+#         conn = sqlite3.connect(db_path)
+#
+#         # Clear existing grades data
+#         cursor = conn.cursor()
+#         cursor.execute('DELETE FROM grades')
+#         print(f"[{time.strftime('%H:%M:%S')}] Cleared existing grades data")
+#
+#         # Insert the new data
+#         print(f"[{time.strftime('%H:%M:%S')}] Inserting {len(grades_df)} team grade records...")
+#         grades_df.to_sql('grades', conn, if_exists='append', index=False)
+#
+#         # Verify the data was inserted
+#         cursor.execute('SELECT COUNT(*) FROM grades')
+#         count = cursor.fetchone()[0]
+#         print(f"[{time.strftime('%H:%M:%S')}] Verified {count} records in grades table")
+#
+#         conn.commit()
+#         conn.close()
+#         print(f"[{time.strftime('%H:%M:%S')}] Successfully stored team grades in the database")
+#         return True
+#
+#     except Exception as e:
+#         print(f"[{time.strftime('%H:%M:%S')}] ERROR: {e}")
+#         import traceback
+#         print(traceback.format_exc())
+#         return False
 
-def store_grades_data(csv_path=None, db_path=None):
-    """
-    Store team grades data in the database from a CSV file.
+def get_connection():
+    """Get a connection to the database."""
+    return sqlite3.connect(config.DATABASE_PATH)
 
-    Args:
-        csv_path: Path to the CSV file containing grades data (optional)
-        db_path: Path to the database file (optional)
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
+def store_grades_data():
+    """Store team grades data in the database from a CSV file."""
     try:
-
-
         start_time = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] Starting grades data storage process...")
 
-        # Determine paths if not provided
-        script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-
-        if csv_path is None:
-            csv_path = script_dir.parent / "Data" / "Grades" / "TeamGrades.csv"
-            print(f"[{time.strftime('%H:%M:%S')}] CSV path not provided, using default: {csv_path}")
-        else:
-            print(f"[{time.strftime('%H:%M:%S')}] Using provided CSV path: {csv_path}")
-
-        # Set absolute database path - important to avoid creating multiple DB files
-        if db_path is None:
-            # Use root project directory for database
-            db_path = script_dir.parent / "nfl_data.db"
-            print(f"[{time.strftime('%H:%M:%S')}] Using database at: {db_path}")
+        csv_path = config.TEAM_GRADES_CSV
+        # print(f"[{time.strftime('%H:%M:%S')}] Using CSV path: {csv_path}")
+        print(f"[{time.strftime('%H:%M:%S')}] Using database at: {config.DATABASE_PATH}")
 
         # Verify file exists
-        if not Path(csv_path).exists():
+        if not csv_path.exists():
             print(f"[{time.strftime('%H:%M:%S')}] ERROR: CSV file not found at {csv_path}")
             raise FileNotFoundError(f"Grades CSV file not found: {csv_path}")
 
-        print(f"[{time.strftime('%H:%M:%S')}] Loading grades data from {csv_path}...")
-
         # Load the data
         grades_df = pd.read_csv(csv_path)
-        print(f"[{time.strftime('%H:%M:%S')}] Loaded grades dataframe with shape: {grades_df.shape}")
-        print(f"[{time.strftime('%H:%M:%S')}] Columns in grades data: {grades_df.columns.tolist()}")
 
         # Connect to the database using absolute path
-        print(f"[{time.strftime('%H:%M:%S')}] Connecting to database at: {db_path}")
-        conn = sqlite3.connect(db_path)
+        conn = get_connection()
 
         # Clear existing grades data
         cursor = conn.cursor()
         cursor.execute('DELETE FROM grades')
-        print(f"[{time.strftime('%H:%M:%S')}] Cleared existing grades data")
 
         # Insert the new data
-        print(f"[{time.strftime('%H:%M:%S')}] Inserting {len(grades_df)} team grade records...")
         grades_df.to_sql('grades', conn, if_exists='append', index=False)
-
-        # Verify the data was inserted
-        cursor.execute('SELECT COUNT(*) FROM grades')
-        count = cursor.fetchone()[0]
-        print(f"[{time.strftime('%H:%M:%S')}] Verified {count} records in grades table")
 
         conn.commit()
         conn.close()
-        print(f"[{time.strftime('%H:%M:%S')}] Successfully stored team grades in the database")
         return True
 
     except Exception as e:
         print(f"[{time.strftime('%H:%M:%S')}] ERROR: {e}")
-        import traceback
-        print(traceback.format_exc())
         return False
 
 def drop_tables():
-    conn = sqlite3.connect('nfl_data.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('DROP TABLE IF EXISTS grades')
@@ -93,9 +135,8 @@ def drop_tables():
     conn.close()
 
 def create_tables():
-    conn = sqlite3.connect('nfl_data.db')
+    conn = get_connection()
     cursor = conn.cursor()
-
     # Create grades table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS grades (        

@@ -1,7 +1,8 @@
 import requests
 import pandas as pd
 import sqlite3
-
+from panda_picks.db.database import get_connection
+from panda_picks import config
 # Define the weights for each statistic
 offensive_weights = {
     'epa_per_play': 35,
@@ -155,8 +156,8 @@ def main():
     off_url = "https://sumersports.com/wp-content/uploads/data/off_team.json"
     def_url = "https://sumersports.com/wp-content/uploads/data/def_team.json"
 
-    # Connect to SQLite database
     conn = sqlite3.connect('nfl_data.db')
+    conn = get_connection()
 
     off_data = fetch_advanced_stats(off_url)
     save_advanced_stats(off_data, conn)

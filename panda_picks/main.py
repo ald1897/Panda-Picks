@@ -1,15 +1,16 @@
+# panda_picks/main.py
 import logging
 import time
-import pdf_scraper
-import picks
-import create_spreads
-import backtest
-import get_advanced_stats
-import db.db as db
-
+from panda_picks.data import pdf_scraper, advanced_stats
+from panda_picks.analysis import picks
+# With this:
+from panda_picks.analysis.backtest import backtest
+from panda_picks.analysis import spreads as create_spreads  # Alias to match existing code
+from panda_picks.db import database as db
+from panda_picks import config
 
 def start():
-    logging.basicConfig(filename='panda_picks.log', level=logging.DEBUG)
+    logging.basicConfig(filename=config.PROJECT_ROOT / 'panda_picks.log', level=logging.DEBUG)
     logging.info('Starting Panda Picks')
     logging.info('Dropping Tables')
     db.drop_tables()
@@ -37,8 +38,9 @@ def start():
     logging.info("Done Making Picks")
     time.sleep(0.1)
     logging.info("Backtesting")
-    backtest.backtest()
+    backtest()
     logging.info('Backtesting completed')
+
 
 
 if __name__ == '__main__':
