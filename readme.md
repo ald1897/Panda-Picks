@@ -1,84 +1,73 @@
-### Panda Picks Project
+# Panda Picks - NFL Betting Analysis
 
-#### Overview
-The Panda Picks project is an NFL betting backtest application that predicts game outcomes and evaluates betting strategies. The application uses various data sources, including team grades, matchups, and spreads, to make informed betting picks. It also provides a Streamlit-based web interface for users to interact with the data and visualize results.
+## Overview
+Panda Picks is an NFL betting analysis tool that predicts game outcomes and evaluates betting strategies. The application uses PFF (Pro Football Focus) team grades and spread data to make informed betting picks, and includes a comprehensive backtesting system to evaluate performance.
 
-#### Project Structure
-- `src/`
-  - `app.py`: Main Streamlit application file that displays predictions, picks data, week stats, and summary stats.
-  - `backtest.py`: Contains functions to backtest betting strategies and calculate winnings.
-  - `create_spreads.py`: Fetches and processes NFL game data from an API to create spreads.
-  - `main.py`: Orchestrates the execution of various modules to scrape data, make picks, and backtest strategies.
-  - `matchups.py`: Scrapes NFL matchup data from a website and processes it.
-  - `pdf_scraper.py`: Extracts team grades from a PDF file and processes them.
-  - `picks.py`: Generates game picks based on team grades and matchups.
-  - `spreads.py`: Processes and merges spread data with team abbreviations.
+## Features
+- Extracts and processes team grades from PFF data
+- Fetches and analyzes NFL game spreads
+- Generates game picks based on team advantages (offense, defense, overall)
+- Creates teaser bet combinations (2-team, 3-team, 4-team)
+- Backtests betting strategies across NFL season weeks
+- Calculates win percentages and potential profits
 
-#### Key Features
-- **Dynamic Bankroll and Bet Amount**: Users can set their starting bankroll and bet amount through the Streamlit sidebar.
-- **Data Visualization**: The application uses Altair to create charts for visualizing predictions and summary statistics.
-- **Comprehensive Data Processing**: Merges various data sources, including team grades, matchups, and spreads, to make informed game picks.
-- **Backtesting**: Evaluates betting strategies by calculating winnings and win percentages over multiple weeks.
+## Project Structure
+```
+panda_picks/
+├── analysis/
+│   ├── backtest.py   # Evaluates betting performance
+│   ├── bets.py       # Generates betting combinations
+│   ├── picks.py      # Creates game predictions
+│   └── spreads.py    # Processes spread information
+├── data/
+│   ├── advanced_stats.py  # (Optional) Advanced stats analysis
+│   └── pdf_scraper.py     # Extracts team grades from PDFs
+├── db/
+│   └── database.py   # Database operations
+├── config.py         # Project configuration
+└── main.py           # Main execution script
+```
 
-#### How to Run
-1. **Install Dependencies**:
-   ```sh
+## Getting Started
+
+### Prerequisites
+- Python 3.8+
+- Required Python packages (install via pip):
+    - pandas
+    - numpy
+    - tabula-py
+    - requests
+    - sqlite3
+
+### Installation
+1. Clone the repository
+2. Install dependencies:
+   ```
    pip install -r requirements.txt
    ```
 
-2. **Run the Application**:
-   ```sh
-   streamlit run src/app.py
-   ```
+### Usage
+Run the main script to execute the complete pipeline:
+```
+python -m panda_picks.main
+```
 
-3. **Generate Data**:
-   - Run `main.py` to scrape data, make picks, and backtest strategies:
-     ```sh
-     python src/main.py
-     ```
+This will:
+1. Create/reset the database
+2. Extract team grades from PDF data
+3. Process NFL spreads
+4. Generate game picks
+5. Run the backtest on historical data
 
-#### Deployment
-To deploy the application on AWS using Elastic Beanstalk:
-1. **Install AWS CLI and EB CLI**:
-   ```sh
-   pip install awscli awsebcli
-   ```
+## How It Works
+1. **Data Collection**: The system extracts team grades from PFF data and fetches NFL game spreads.
+2. **Analysis**: It calculates advantages between teams based on various metrics.
+3. **Picks Generation**: Teams are selected based on significant advantages in key areas.
+4. **Bet Combinations**: Multiple bet combinations are generated for teaser bets.
+5. **Backtesting**: Historical performance is evaluated to calculate profitability.
 
-2. **Configure AWS CLI**:
-   ```sh
-   aws configure
-   ```
+## Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-3. **Initialize Elastic Beanstalk**:
-   ```sh
-   eb init -p python-3.8 my-streamlit-app
-   ```
-
-4. **Create an Environment and Deploy**:
-   ```sh
-   eb create my-streamlit-env
-   eb deploy
-   ```
-
-5. **Open Your Application**:
-   ```sh
-   eb open
-   ```
-
-#### Files Description
-- **`app.py`**: Main application file for the Streamlit interface.
-- **`backtest.py`**: Contains functions for backtesting betting strategies.
-- **`create_spreads.py`**: Fetches and processes NFL game data to create spreads.
-- **`main.py`**: Orchestrates the execution of data scraping, pick making, and backtesting.
-- **`matchups.py`**: Scrapes and processes NFL matchup data.
-- **`pdf_scraper.py`**: Extracts and processes team grades from a PDF file.
-- **`picks.py`**: Generates game picks based on processed data.
-- **`spreads.py`**: Processes and merges spread data with team abbreviations.
-
-#### Data Sources
-- **Team Grades**: Extracted from a PDF file using `pdf_scraper.py`.
-- **Matchups**: Scraped from a website using `matchups.py`.
-- **Spreads**: Fetched from an API and processed using `create_spreads.py`.
-
-#### Contact
-For any questions or issues, please contact the project maintainer.
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
