@@ -1,0 +1,7 @@
+pandas
+numpy
+requests
+tabula-py
+PyPDF2
+sqlite3
+
