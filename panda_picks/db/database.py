@@ -37,6 +37,7 @@ def store_grades_data():
 
         # Insert the new data
         grades_df.to_sql('grades', conn, if_exists='append', index=False)
+        print(f"[{time.strftime('%H:%M:%S')}] Grades data stored successfully in the database.")
 
         conn.commit()
         conn.close()
@@ -80,6 +81,12 @@ def create_tables():
          TACK REAL,
          PRSH REAL,
          COV REAL,
+         WINS INTEGER,
+         LOSSES INTEGER,
+         TIES INTEGER,
+         PTS_SCORED INTEGER,
+         PTS_ALLOWED INTEGER,
+         LAST_UPDATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
          PRIMARY KEY (TEAM)
 )
                    ''')

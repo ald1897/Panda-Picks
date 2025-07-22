@@ -1,6 +1,7 @@
 from itertools import combinations
 import pandas as pd
 import sqlite3
+import time
 
 from panda_picks.db.database import get_connection
 from panda_picks import config
@@ -21,8 +22,10 @@ def adjust_spread(row, teaser_points=6):
     return row
 
 def generate_combos(weeks=['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']):
+    print(f"[{time.strftime('%H:%M:%S')}] generate_combos started")
     """Generate team combinations for betting analysis."""
     for week in weeks:
+        print(f"[{time.strftime('%H:%M:%S')}] Processing week {week}")
         conn = get_connection()
         # List of teams from the picks table
         df = pd.read_sql_query(f"SELECT * FROM picks WHERE week = 'WEEK{week}'", conn)
@@ -36,12 +39,12 @@ def generate_combos(weeks=['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '1
         three_team_combos = list(combinations(teams, 3))
         four_team_combos = list(combinations(teams, 4))
 
-        # Display results
-        print("Week:", week)
-        print("2-Team Combos:", two_team_combos)
-        print("3-Team Combos:", three_team_combos)
-        print("4-Team Combos:", four_team_combos)
-        print("Total Bets:", len(two_team_combos) + len(three_team_combos) + len(four_team_combos))
+        # # Display results
+        # print("Week:", week)
+        # print("2-Team Combos:", two_team_combos)
+        # print("3-Team Combos:", three_team_combos)
+        # print("4-Team Combos:", four_team_combos)
+        # print("Total Bets:", len(two_team_combos) + len(three_team_combos) + len(four_team_combos))
 
         # Save results to csv
         pd.DataFrame(two_team_combos).to_csv(f'combos_2_TEAM_WEEK{week}.csv', index=False)
@@ -53,6 +56,7 @@ def generate_combos(weeks=['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '1
             print(f"Placing bet on combination: {combo}")
 
         conn.close()
+    print(f"[{time.strftime('%H:%M:%S')}] generate_combos finished")
 
 if __name__ == '__main__':
     generate_combos()

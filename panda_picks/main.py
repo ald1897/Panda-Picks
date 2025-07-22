@@ -1,7 +1,7 @@
 # panda_picks/main.py
 import logging
 import time
-from panda_picks.data import pdf_scraper, advanced_stats
+from panda_picks.data import get_pff_grades, advanced_stats
 from panda_picks.analysis import picks
 # With this:
 from panda_picks.analysis.backtest import backtest
@@ -18,7 +18,7 @@ def start():
     db.create_tables()
     time.sleep(0.1)
     logging.info('Starting PFF Grades')
-    pdf_scraper.getGrades()
+    get_pff_grades.getGrades()
     logging.info('PFF Grades Completed')
     time.sleep(0.1)
     logging.info('Storing PFF Grades Data')

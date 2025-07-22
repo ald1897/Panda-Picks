@@ -4,4 +4,8 @@ requests
 tabula-py
 PyPDF2
 sqlite3
-
+brotli
+selenium
+webdriver-manager
+python-dotenv
+undetected-chromedriver

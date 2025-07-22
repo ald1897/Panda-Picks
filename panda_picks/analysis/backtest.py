@@ -4,6 +4,7 @@ from itertools import combinations
 import logging
 from panda_picks.db.database import get_connection
 from panda_picks import config
+import time
 
 def calculate_winnings(bet_amount, odds):
     if odds > 0:
@@ -25,6 +26,7 @@ def check_teaser_pick(row, team):
         return row['Away_Score'] + row['Away_Line_Close'] > row['Home_Score']
 
 def backtest():
+    print(f"[{time.strftime('%H:%M:%S')}] backtest started")
     weeks = ['WEEK1','WEEK2','WEEK3','WEEK4','WEEK5','WEEK6','WEEK7','WEEK8','WEEK9', 'WEEK10', 'WEEK11', 'WEEK12', 'WEEK13', 'WEEK14', 'WEEK15', 'WEEK16', 'WEEK17', 'WEEK18']
     final_results = pd.DataFrame()
     cumulative_profit = 0
@@ -35,6 +37,7 @@ def backtest():
     conn = get_connection()
 
     for week in weeks:
+        # print(f"[{time.strftime('%H:%M:%S')}] Processing {week}")
         df = pd.read_sql_query("SELECT * FROM spreads", conn)
         picks_df = pd.read_sql_query(f"SELECT * FROM picks WHERE WEEK = '{week}'", conn)
         merged_df = pd.merge(picks_df, df, left_on=['WEEK', 'Home_Team', 'Away_Team'],
@@ -45,6 +48,9 @@ def backtest():
         if 'Home_Line_Close_y' in merged_df.columns:
             merged_df = merged_df.drop(columns=['Home_Line_Close_y', 'Away_Line_Close_y'])
             merged_df = merged_df.rename(columns={'Home_Line_Close_x': 'Home_Line_Close', 'Away_Line_Close_x': 'Away_Line_Close'})
+
+        merged_df = merged_df.rename(columns={'WINS_x': 'Home_Wins', 'LOSSES_x': 'Home_Losses', 'TIES_x': 'Home_Ties'})
+        merged_df = merged_df.rename(columns={'WINS_y': 'Away_Wins', 'LOSSES_y': 'Away_Losses', 'TIES_y': 'Away_Ties'})
 
         merged_df = merged_df.apply(adjust_spread, axis=1)
         teams = merged_df['Game_Pick'].unique()
@@ -116,20 +122,21 @@ def backtest():
     final_results = pd.read_sql_query("SELECT * FROM teaser_results", conn)
     final_results['Total_Profit'] = cumulative_profit
     final_results.to_sql('backtest_results', conn, if_exists='replace', index=False)
-    print(final_results[['WEEK', 'Total_Amount_Wagered', 'Weekly_Profit', 'Total_Balance']])
-
-    print(f"Max Weekly Wagered: ${final_results['Total_Amount_Wagered'].max()}")
-    print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
-    print(f"Final Balance: ${current_balance:,.2f}")
+    # print(final_results[['WEEK', 'Total_Amount_Wagered', 'Weekly_Profit', 'Total_Balance']])
+    #
+    # print(f"Max Weekly Wagered: ${final_results['Total_Amount_Wagered'].max()}")
+    # print(f"Cumulative Profit over all weeks: ${cumulative_profit:,.2f}")
+    # print(f"Final Balance: ${current_balance:,.2f}")
 
     # Add check to prevent division by zero
     if final_results.shape[0] > 0:
         win_percentage = final_results[final_results['Winnings'] > 0].shape[0] / final_results.shape[0]
         print(f"Individual Bet Win Percentage: {win_percentage * 100:.2f}%")
     else:
-        print("No bet results available to calculate win percentage.")
+        print(f"[{time.strftime('%H:%M:%S')}] No bet results available to calculate win percentage.")
 
     conn.close()
+    print(f"[{time.strftime('%H:%M:%S')}] backtest finished")
 
 if __name__ == "__main__":
     backtest()
