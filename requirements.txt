@@ -9,3 +9,4 @@ selenium
 webdriver-manager
 python-dotenv
 undetected-chromedriver
+ni
