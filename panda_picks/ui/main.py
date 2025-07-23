@@ -36,9 +36,9 @@ def get_win_rate():
         conn.close()
         if total > 0:
             return f"{(correct / total) * 100:.1f}%"
-        return "62.5%"  # Fallback value
+        return "0%"  # Fallback value
     except:
-        return "62.5%"  # Fallback value
+        return "0%"  # Fallback value
 
 def get_upcoming_games():
     try:
@@ -49,7 +49,7 @@ def get_upcoming_games():
         conn.close()
         return result
     except:
-        return 5  # Fallback value
+        return 0  # Fallback value
 
 def get_recent_picks():
     try:
@@ -59,7 +59,7 @@ def get_recent_picks():
         SELECT WEEK, Home_Team, Away_Team, Game_Pick, 
         CASE WHEN Pick_Covered_Spread = 1 THEN 'WIN' WHEN Pick_Covered_Spread = 0 THEN 'LOSS' ELSE 'PENDING' END as Result
         FROM picks_results 
-        ORDER BY WEEK DESC LIMIT 5
+        ORDER BY WEEK LIMIT 5
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -77,17 +77,9 @@ def get_recent_picks():
                 })
             return formatted_rows
         else:
-            return [
-                {'Week': 'WEEK1', 'Home': 'KC', 'Away': 'BAL', 'Pick': 'KC', 'Result': 'WIN'},
-                {'Week': 'WEEK1', 'Home': 'SF', 'Away': 'LA', 'Pick': 'SF', 'Result': 'LOSS'},
-                {'Week': 'WEEK1', 'Home': 'MIA', 'Away': 'NE', 'Pick': 'MIA', 'Result': 'WIN'}
-            ]
+            return []  # Return empty list if no rows found
     except:
-        return [
-            {'Week': 'WEEK1', 'Home': 'KC', 'Away': 'BAL', 'Pick': 'KC', 'Result': 'WIN'},
-            {'Week': 'WEEK1', 'Home': 'SF', 'Away': 'LA', 'Pick': 'SF', 'Result': 'LOSS'},
-            {'Week': 'WEEK1', 'Home': 'MIA', 'Away': 'NE', 'Pick': 'MIA', 'Result': 'WIN'}
-        ]
+        return []
 
 def calculate_win_rates():
     try:
@@ -144,7 +136,7 @@ def get_upcoming_picks():
         try:
             cursor.execute(query)
         except:
-            cursor.execute("SELECT Week, Home_Team, Away_Team, Game_Pick, 0.85 as Confidence FROM picks LIMIT 5")
+            cursor.execute("SELECT Week, Home_Team, Away_Team, Game_Pick, 0.85 as Confidence FROM picks")
 
         rows = cursor.fetchall()
         conn.close()
@@ -157,6 +149,8 @@ def get_upcoming_picks():
             {'Week': 'WEEK2', 'Home_Team': 'BUF', 'Away_Team': 'JAX', 'Predicted_Pick': 'BUF', 'Confidence_Score': '88.2%'},
             {'Week': 'WEEK2', 'Home_Team': 'DAL', 'Away_Team': 'NO', 'Predicted_Pick': 'DAL', 'Confidence_Score': '75.1%'},
         ]
+
+
 
 def get_team_grades():
     try:
@@ -228,9 +222,9 @@ def run_backtest(strategy: str):
             won = False
             if covered_spread == 0:
                 continue
-            
+
             total_bets += 1
-            
+
             if (bet_on == home_team and covered_spread > 0) or \
                (bet_on == away_team and covered_spread < 0):
                 won = True
@@ -240,7 +234,7 @@ def run_backtest(strategy: str):
                 profit += 91
             else:
                 profit -= 100
-            
+
             chart_data.append({'game': i + 1, 'profit': profit})
 
         if total_bets == 0:
@@ -283,16 +277,16 @@ def get_team_details(team_name: str):
         grades = cursor.fetchone()
 
         cursor.execute("""
-            SELECT Week, Home_Team, Away_Team, Home_Score, Away_Score 
-            FROM spreads 
+            SELECT Week, Home_Team, Away_Team, Home_Score, Away_Score
+            FROM spreads
             WHERE (Home_Team = ? OR Away_Team = ?) AND Home_Score IS NOT NULL
             ORDER BY Week DESC LIMIT 5
         """, (team_name, team_name))
         recent_results = cursor.fetchall()
 
         cursor.execute("""
-            SELECT Week, Home_Team, Away_Team 
-            FROM spreads 
+            SELECT Week, Home_Team, Away_Team
+            FROM spreads
             WHERE (Home_Team = ? OR Away_Team = ?) AND Home_Score IS NULL
             ORDER BY Week ASC LIMIT 5
         """, (team_name, team_name))
@@ -328,6 +322,82 @@ def get_team_details(team_name: str):
             'recent_results': [{'Week': 'WEEK1', 'Matchup': 'CHI @ GB', 'Score': '17-24'}],
             'upcoming_schedule': [{'Week': 'WEEK2', 'Matchup': 'GB @ PHI'}],
             'ats_record': '10-7'
+        }
+
+def get_win_rate_trend():
+    """Get weekly win rate data for trend chart"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Get weekly results ordered by week
+        cursor.execute("""
+            SELECT WEEK, 
+                   COUNT(*) as total_picks,
+                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) as wins
+            FROM picks_results 
+            WHERE Pick_Covered_Spread IS NOT NULL
+            GROUP BY WEEK 
+            ORDER BY CASE 
+                WHEN WEEK = 'WEEK1' THEN 1
+                WHEN WEEK = 'WEEK2' THEN 2
+                WHEN WEEK = 'WEEK3' THEN 3
+                WHEN WEEK = 'WEEK4' THEN 4
+                WHEN WEEK = 'WEEK5' THEN 5
+                WHEN WEEK = 'WEEK6' THEN 6
+                WHEN WEEK = 'WEEK7' THEN 7
+                WHEN WEEK = 'WEEK8' THEN 8
+                WHEN WEEK = 'WEEK9' THEN 9
+                WHEN WEEK = 'WEEK10' THEN 10
+                WHEN WEEK = 'WEEK11' THEN 11
+                WHEN WEEK = 'WEEK12' THEN 12
+                WHEN WEEK = 'WEEK13' THEN 13
+                WHEN WEEK = 'WEEK14' THEN 14
+                WHEN WEEK = 'WEEK15' THEN 15
+                WHEN WEEK = 'WEEK16' THEN 16
+                WHEN WEEK = 'WEEK17' THEN 17
+                WHEN WEEK = 'WEEK18' THEN 18
+            END
+        """)
+
+        results = cursor.fetchall()
+        conn.close()
+
+        if not results:
+            return {'weeks': [], 'win_rates': [], 'cumulative_rates': []}
+
+        weeks = []
+        win_rates = []
+        cumulative_rates = []
+
+        total_wins = 0
+        total_games = 0
+
+        for week, total_picks, wins in results:
+            # Weekly win rate
+            weekly_rate = (wins / total_picks) * 100 if total_picks > 0 else 0
+
+            # Cumulative win rate
+            total_wins += wins
+            total_games += total_picks
+            cumulative_rate = (total_wins / total_games) * 100 if total_games > 0 else 0
+
+            weeks.append(week)
+            win_rates.append(round(weekly_rate, 1))
+            cumulative_rates.append(round(cumulative_rate, 1))
+
+        return {
+            'weeks': weeks,
+            'win_rates': win_rates,
+            'cumulative_rates': cumulative_rates
+        }
+
+    except Exception as e:
+        # Fallback data for demo purposes
+        return {
+            'weeks': ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5'],
+            'win_rates': [66.7, 57.1, 62.5, 71.4, 60.0],
+            'cumulative_rates': [66.7, 61.5, 62.0, 64.3, 63.5]
         }
 
 @ui.page('/')  # normal index page (e.g. the entry point of the app)
@@ -484,15 +554,76 @@ def main():
         # Placeholder chart
         with ui.card().classes('w-full q-mt-lg shadow-lg'):
             ui.label('Win Rate Trend').classes('text-h6 q-pa-md')
-            with ui.row().classes('q-pa-md w-full'):
+
+            # Get trend data
+            trend_data = get_win_rate_trend()
+
+            if trend_data['weeks']:
+                # Create the trend chart with matplotlib
+                with ui.matplotlib(figsize=(8, 5)).classes('w-full q-pa-md') as trend_chart:
+                    fig = trend_chart.figure
+                    ax = fig.add_subplot(111)
+
+                    # Plot weekly win rate
+                    ax.plot(range(len(trend_data['weeks'])), trend_data['win_rates'],
+                           marker='o', linewidth=2, label='Weekly Win Rate', color=COLORS['secondary'])
+
+                    # Plot cumulative win rate
+                    ax.plot(range(len(trend_data['weeks'])), trend_data['cumulative_rates'],
+                           marker='s', linewidth=2, label='Cumulative Win Rate', color=COLORS['primary'])
+
+                    # Set x-axis labels to weeks
+                    ax.set_xticks(range(len(trend_data['weeks'])))
+                    ax.set_xticklabels(trend_data['weeks'], rotation=45)
+
+                    # Set y-axis range and labels
+                    ax.set_ylim(0, 100)
+                    ax.set_ylabel('Win Rate (%)')
+                    ax.set_xlabel('Week')
+
+                    # Add grid, title and legend
+                    ax.grid(True, linestyle='--', alpha=0.7)
+                    ax.set_title('Win Rate Trend Over Time')
+                    ax.legend(loc='upper right')
+
+                    # Ensure the layout looks good
+                    fig.tight_layout()
+
+                # Add summary stats below the chart
+                with ui.row().classes('q-pa-md w-full justify-around text-center'):
+                    with ui.column():
+                        ui.label('Best Week').classes('text-subtitle2 text-grey-7')
+                        best_week_idx = trend_data['win_rates'].index(max(trend_data['win_rates']))
+                        ui.label(f"{trend_data['weeks'][best_week_idx]} ({max(trend_data['win_rates'])}%)").classes('text-h6 text-weight-bold')
+
+                    with ui.column():
+                        ui.label('Current Streak').classes('text-subtitle2 text-grey-7')
+                        # Calculate current streak (simplified - last 3 weeks trend)
+                        if len(trend_data['win_rates']) >= 3:
+                            recent_trend = trend_data['win_rates'][-3:]
+                            if all(recent_trend[i] >= recent_trend[i-1] for i in range(1, len(recent_trend))):
+                                ui.label('📈 Improving').classes('text-h6 text-positive')
+                            elif all(recent_trend[i] <= recent_trend[i-1] for i in range(1, len(recent_trend))):
+                                ui.label('📉 Declining').classes('text-h6 text-negative')
+                            else:
+                                ui.label('↔️ Mixed').classes('text-h6 text-grey-8')
+                        else:
+                            ui.label('N/A').classes('text-h6 text-grey-8')
+
+                    with ui.column():
+                        ui.label('Weeks Analyzed').classes('text-subtitle2 text-grey-7')
+                        ui.label(str(len(trend_data['weeks']))).classes('text-h6 text-weight-bold')
+            else:
+                # Fallback if no data
                 ui.html('''
                 <div style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #9e9e9e;">
                     <div style="text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 10px;">📈</div>
-                        <div>Trend chart would appear here with actual data</div>
+                        <div style="font-size: 48px; margin-bottom: 10px;">📊</div>
+                        <div>No data available for trend analysis</div>
+                        <div style="font-size: 14px; margin-top: 10px;">Run the populate_picks_results.py script to generate sample data</div>
                     </div>
                 </div>
-                ''')
+                ''').classes('w-full q-pa-md')
 
     @router.add('/picks')
     def picks():
@@ -610,11 +741,31 @@ def main():
             with chart_card:
                 ui.label('Profit Over Time').classes('text-h6 q-pa-md')
                 if data['chart_data']:
-                    ui.line_chart(options={
-                        'chart': {'type': 'line'},
-                        'series': [{'name': 'Profit', 'data': [d['profit'] for d in data['chart_data']]}],
-                        'xaxis': {'categories': [d['game'] for d in data['chart_data']]},
-                    }).classes('w-full')
+                    # Create profit chart with matplotlib
+                    with ui.matplotlib(figsize=(8, 4)).classes('w-full') as profit_chart:
+                        fig = profit_chart.figure
+                        ax = fig.add_subplot(111)
+
+                        # Extract game numbers and profit values
+                        games = [d['game'] for d in data['chart_data']]
+                        profits = [d['profit'] for d in data['chart_data']]
+
+                        # Plot profit line
+                        ax.plot(games, profits, marker='o', linewidth=2, color=COLORS['primary'])
+
+                        # Add a horizontal line at zero
+                        ax.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+
+                        # Labels and title
+                        ax.set_xlabel('Game Number')
+                        ax.set_ylabel('Profit ($)')
+                        ax.set_title('Profit Over Time')
+
+                        # Add grid
+                        ax.grid(True, linestyle='--', alpha=0.7)
+
+                        # Ensure layout looks good
+                        fig.tight_layout()
                 else:
                     ui.html('<div style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; color: #9e9e9e;">No data for chart.</div>').classes('w-full')
 
