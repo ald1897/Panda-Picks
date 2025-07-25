@@ -1,0 +1,49 @@
+{
+  "servers": {
+    "sqlite": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-sqlite",
+        "C:/Users/Alexd/IdeaProjects/Panda-Picks/database/nfl_data.db"
+      ]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:/Users/Alexd/IdeaProjects/Panda-Picks"
+      ]
+    },
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "git": {
+      "command": "C:/Users/Alexd/IdeaProjects/Panda-Picks/venv/Scripts/python.exe",
+      "args": [
+        "-c",
+        "from mcp_server_git import __main__; __main__.main()",
+        "--repository",
+        "C:/Users/Alexd/IdeaProjects/Panda-Picks"
+      ]
+    },
+    "sequential_thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "google-scholar": {
+      "command": "C:/Users/Alexd/IdeaProjects/Panda-Picks/venv/Scripts/python.exe",
+      "args": [
+        "C:/Users/Alexd/IdeaProjects/Panda-Picks/Google-Scholar-MCP-Server/google_scholar_server.py"
+      ]
+    }
+  }
+}
