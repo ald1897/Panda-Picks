@@ -1,206 +1,246 @@
 import pandas as pd
 import numpy as np
-import sqlite3
 import logging
 import time
 
 from panda_picks.db.database import get_connection
 from panda_picks import config
 
+# ---------------- New configuration / helper functions ---------------- #
+SIGNIFICANCE_THRESHOLDS = {
+    'Overall_Adv': 2.0,      # tune later via backtest
+    'Offense_Adv': 2.0,
+    'Defense_Adv': 2.0
+}
+K_PROB_SCALE = 0.10  # scaling factor to convert grade diff to win probability proxy
+
+ADVANTAGE_BASE_COLUMNS = [
+    ('Overall_Adv', lambda r: r['OVR'] - r['OPP_OVR']),
+    ('Offense_Adv', lambda r: r['OFF'] - r['OPP_DEF']),
+    ('Defense_Adv', lambda r: r['DEF'] - r['OPP_OFF']),
+    ('Passing_Adv', lambda r: r['PASS'] - r['OPP_COV']),
+    ('Pass_Block_Adv', lambda r: r['PBLK'] - r['OPP_PRSH']),
+    ('Receiving_Adv', lambda r: r['RECV'] - r['OPP_COV']),
+    ('Running_Adv', lambda r: r['RUN'] - r['OPP_RDEF']),
+    ('Run_Block_Adv', lambda r: r['RBLK'] - r['OPP_RDEF']),
+    ('Run_Defense_Adv', lambda r: r['RDEF'] - r['OPP_RUN']),
+    ('Pass_Rush_Adv', lambda r: r['PRSH'] - r['OPP_PBLK']),
+    ('Coverage_Adv', lambda r: r['COV'] - r['OPP_RECV']),
+    ('Tackling_Adv', lambda r: r['TACK'] - r['OPP_RUN'])
+]
+
+PRIMARY_ADV_COLS = ['Overall_Adv', 'Offense_Adv', 'Defense_Adv']
+
+# ---- Schema helpers ---- #
+
+def _table_exists(conn, table_name: str) -> bool:
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    return cur.fetchone() is not None
+
+def _ensure_columns(conn, table_name: str, cols_types: dict):
+    if not _table_exists(conn, table_name):
+        return
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table_name})")
+    existing = {row[1] for row in cur.fetchall()}
+    for col, col_type in cols_types.items():
+        if col not in existing:
+            logging.info(f"Altering table {table_name}: adding missing column {col} {col_type}")
+            cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {col_type}")
+    conn.commit()
+
+
+def _classify_significance(df: pd.DataFrame) -> pd.DataFrame:
+    for col in PRIMARY_ADV_COLS:
+        thresh = SIGNIFICANCE_THRESHOLDS.get(col, 0)
+        sig_col = f'{col}_sig'
+        df[sig_col] = np.select(
+            [df[col] >= thresh, df[col] <= -thresh],
+            ['home significant', 'away significant'],
+            default='insignificant'
+        )
+    return df
+
+
+def _compute_probabilities(df: pd.DataFrame) -> pd.DataFrame:
+    # Simple logistic transform of Overall_Adv to approximate a win probability (home perspective)
+    df['Home_Win_Prob'] = 1 / (1 + np.exp(-K_PROB_SCALE * df['Overall_Adv']))
+    df['Away_Win_Prob'] = 1 - df['Home_Win_Prob']
+    return df
+
+
+def _decide_picks(df: pd.DataFrame) -> pd.DataFrame:
+    # Strategy: if any primary advantage passes threshold and points consistently toward one side, pick that side; else pass.
+    # Determine directional consensus (majority of significant signals) ignoring insignificant ones.
+    pick_side = []
+    for _, row in df.iterrows():
+        signals = [row[f'{c}_sig'] for c in PRIMARY_ADV_COLS]
+        home_votes = sum(s == 'home significant' for s in signals)
+        away_votes = sum(s == 'away significant' for s in signals)
+        # If all insignificant -> no pick to avoid random noise
+        if home_votes == 0 and away_votes == 0:
+            pick_side.append('No Pick')
+            continue
+        # Require at least one significant signal AND no conflicting significant signals
+        if home_votes > 0 and away_votes == 0:
+            pick_side.append(row['Home_Team'])
+        elif away_votes > 0 and home_votes == 0:
+            pick_side.append(row['Away_Team'])
+        else:
+            pick_side.append('No Pick')
+    df['Game_Pick'] = pick_side
+    return df
+
+
+def _prepare_grades(conn):
+    grades = pd.read_sql_query("SELECT * FROM grades", conn)
+    # Normalize team column names (handle both TEAM / Team)
+    if 'TEAM' in grades.columns:
+        grades = grades.rename(columns={'TEAM': 'Home_Team'})
+    elif 'Team' in grades.columns:
+        grades = grades.rename(columns={'Team': 'Home_Team'})
+
+    opp_grades = grades.copy().rename(columns={
+        'Home_Team': 'Away_Team',
+        'OVR': 'OPP_OVR',
+        'OFF': 'OPP_OFF',
+        'DEF': 'OPP_DEF',
+        'PASS': 'OPP_PASS',
+        'PBLK': 'OPP_PBLK',
+        'RECV': 'OPP_RECV',
+        'RUN': 'OPP_RUN',
+        'RBLK': 'OPP_RBLK',
+        'PRSH': 'OPP_PRSH',
+        'COV': 'OPP_COV',
+        'RDEF': 'OPP_RDEF',
+        'TACK': 'OPP_TACK'
+    })
+    return grades, opp_grades
+
+
+def _calculate_advantages(matchups: pd.DataFrame) -> pd.DataFrame:
+    for new_col, func in ADVANTAGE_BASE_COLUMNS:
+        matchups[new_col] = matchups.apply(func, axis=1)
+    return matchups
+
+
 def makePicks():
     print(f"[{time.strftime('%H:%M:%S')}] makePicks started")
-    logging.basicConfig(level=logging.DEBUG)
-    weeks = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
-    # weeks = ['9', '10', '11', '12', '13', '14', '15', '16', '17', '18']
-    # Connect to SQLite database
+    logging.basicConfig(level=logging.INFO)
+    weeks = [str(i) for i in range(1, 19)]
     conn = get_connection()
 
     try:
+        grades, opp_grades = _prepare_grades(conn)
+
         for w in weeks:
-            # print(f"[{time.strftime('%H:%M:%S')}] Processing week {w}")
-            pd.set_option("display.precision", 2)
-            pd.options.display.float_format = '{:10,.2f}'.format
+            # Read spreads (correct column name is WEEK)
+            spreads_query = f"SELECT * FROM spreads WHERE WEEK = 'WEEK{w}'"
+            matchups = pd.read_sql_query(spreads_query, conn)
+            if matchups.empty:
+                logging.info(f"Week {w}: no spreads data; skipping")
+                continue
+            matchups = pd.merge(matchups, grades, on='Home_Team', how='left')
+            matchups = pd.merge(matchups, opp_grades, on='Away_Team', how='left')
 
-            # Query the grades table from the database
-            grades = pd.read_sql_query("SELECT * FROM grades", conn)
-            grades = grades.rename(columns={'TEAM': 'Home_Team'})
-            logging.debug(f"Week {w}: Grades data fetched successfully")
-            logging.debug(f"Week {w} Data: {grades}")
-
-            opp_grades = grades.copy()
-            opp_grades = opp_grades.rename(columns={
-                'Home_Team': 'Away_Team',
-                'OVR': 'OPP_OVR',
-                'OFF': 'OPP_OFF',
-                'DEF': 'OPP_DEF',
-                'PASS': 'OPP_PASS',
-                'PBLK': 'OPP_PBLK',
-                'RECV': 'OPP_RECV',
-                'RUN': 'OPP_RUN',
-                'RBLK': 'OPP_RBLK',
-                'PRSH': 'OPP_PRSH',
-                'COV': 'OPP_COV',
-                'RDEF': 'OPP_RDEF',
-                'TACK': 'OPP_TACK'
-            })
-
-            # Query the matchups table from the database
-            matchups = pd.read_sql_query(f"SELECT * FROM spreads WHERE Week = 'WEEK{w}'", conn)
-            matchups = matchups.dropna(axis=0, how='all')
-            matchups = pd.merge(matchups, grades, on="Home_Team")
-            matchups = pd.merge(matchups, opp_grades, on="Away_Team")
-
-            # Convert columns except for the home and away team cols in matchups to numeric types
+            # Convert numeric columns (skip identifiers)
             for col in matchups.columns:
                 if col not in ['Home_Team', 'Away_Team', 'WEEK']:
                     matchups[col] = pd.to_numeric(matchups[col], errors='coerce')
 
-            results = matchups.copy()
-            # Calculate advantages based on PFF grades only
-            results['Overall_Adv'] = results['OVR'] - results['OPP_OVR']
-            results['Offense_Adv'] = results['OFF'] - results['OPP_DEF']
-            results['Defense_Adv'] = results['DEF'] - results['OPP_OFF']
-            results['Passing_Adv'] = results['PASS'] - results['OPP_COV']
-            results['Pass_Block_Adv'] = results['PBLK'] - results['OPP_PRSH']
-            results['Receving_Adv'] = results['RECV'] - results['OPP_COV']
-            results['Running_Adv'] = results['RUN'] - results['OPP_RDEF']
-            results['Run_Block_Adv'] = results['RBLK'] - results['OPP_RDEF']
-            results['Run_Defense_Adv'] = results['RDEF'] - results['OPP_RUN']
-            results['Pass_Rush_Adv'] = results['PRSH'] - ((results['OPP_PBLK'] + results['OPP_PASS']) / 2)
-            results['Coverage_Adv'] = results['COV'] - ((results['OPP_RECV'] + results['OPP_PBLK']) / 2)
-            results['Tackling_Adv'] = results['TACK'] - results['OPP_RUN']
+            results = _calculate_advantages(matchups.copy())
+            results = _classify_significance(results)
+            results = _compute_probabilities(results)
+            results = _decide_picks(results)
 
-            advantage_columns = [
-                'Overall_Adv', 'Offense_Adv', 'Defense_Adv'
-            ]
-
-            # print(results.head(1))
-
-            for col in advantage_columns:
-                results[f'{col}_sig'] = np.where(results[col] > 0, 'home significant', np.where(
-                    results[col] < 0, 'away significant', 'insignificant'))
-
-            # Simplified pick logic based only on grade advantages
-            results['Game_Pick'] = np.where(
-                results[[f'{col}_sig' for col in advantage_columns]].eq('home significant').all(axis=1) |
-                results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1),
-                results['Home_Team'],
-                np.where(
-                    results[[f'{col}_sig' for col in advantage_columns]].eq('away significant').all(axis=1) |
-                    results[[f'{col}_sig' for col in advantage_columns]].eq('insignificant').all(axis=1),
-                    results['Away_Team'], 'No Pick'))
-
-            results = results.sort_values(by=['Overall_Adv'], ascending=False)
+            # Filter out passes
             results = results[results['Game_Pick'] != 'No Pick']
+            if results.empty:
+                logging.info(f"Week {w}: no confident picks after filtering")
+                continue
 
-            # Select only relevant columns
-            results = results[['WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close',
-                               'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
-                               'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig']]
+            # Sort by higher absolute overall advantage (confidence proxy)
+            results = results.sort_values(by=['Overall_Adv'], ascending=False)
 
-            # Insert data into the SQLite database, append if the table already exists
-            results.to_sql('picks', conn, if_exists='append', index=False)
-            logging.debug(f"Week {w}: Data inserted successfully")
-            # print(f"[{time.strftime('%H:%M:%S')}] Week {w} processed")
+            # Prepare output columns (retain backward compatibility)
+            output_cols = [
+                'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close',
+                'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
+                'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig',
+                'Home_Win_Prob', 'Away_Win_Prob'
+            ]
+            missing_cols = [c for c in output_cols if c not in results.columns]
+            for c in missing_cols:
+                results[c] = np.nan
+            results = results[output_cols]
+
+            # Idempotent insert: delete existing rows for these games/week first
+            with conn:  # ensures transaction
+                cur = conn.cursor()
+                # Ensure new columns exist if table pre-exists (schema migration)
+                _ensure_columns(conn, 'picks', {
+                    'Home_Win_Prob': 'REAL',
+                    'Away_Win_Prob': 'REAL'
+                })
+                teams_pairs = list(zip(results['Home_Team'], results['Away_Team']))
+                for home, away in teams_pairs:
+                    cur.execute("DELETE FROM picks WHERE WEEK = ? AND Home_Team = ? AND Away_Team = ?", (f"WEEK{w}", home, away))
+                results.to_sql('picks', conn, if_exists='append', index=False)
+            logging.info(f"Week {w}: inserted {len(results)} picks")
     except Exception as e:
-        logging.error(f"Week {w}: Error occurred - {e}")
+        logging.exception(f"makePicks failed: {e}")
+    finally:
+        conn.close()
+        print(f"[{time.strftime('%H:%M:%S')}] makePicks finished")
 
-    # Commit and close the connection
-    conn.commit()
-    conn.close()
-    print(f"[{time.strftime('%H:%M:%S')}] makePicks finished")
 
 def generate_week_picks(week):
-    """Generate picks for a specific week
-
-    Args:
-        week (int): The week number to generate picks for
-
-    Returns:
-        pandas.DataFrame: DataFrame containing the picks for the week
-    """
-    # Configure logging to use a file handler instead of printing to stdout
+    """Generate picks for a specific week (refactored to reuse core logic)"""
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-
-    # Convert week to string if it's an int
     week_str = str(week)
-
-    # Connect to SQLite database
     conn = get_connection()
 
-    pd.set_option("display.precision", 2)
-    pd.options.display.float_format = '{:10,.2f}'.format
-
-    # Query the grades table from the database
-    grades = pd.read_sql_query("SELECT * FROM grades", conn)
-    grades = grades.rename(columns={'Team': 'Home_Team'})
-
-    opp_grades = grades.copy()
-    opp_grades = opp_grades.rename(columns={'Home_Team': 'Away_Team'})
-
-    # Query the matchups for the specified week
-    matchups_query = f"SELECT * FROM spreads WHERE Week = '{week_str}'"
     try:
-        matchups = pd.read_sql_query(matchups_query, conn)
+        grades, opp_grades = _prepare_grades(conn)
+        matchups = pd.read_sql_query("SELECT * FROM spreads WHERE WEEK = ?", conn, params=[f"WEEK{week_str}"])
+        if matchups.empty:
+            logger.warning(f"Week {week_str}: no spreads data")
+            return pd.DataFrame()
+        merged = pd.merge(matchups, grades, on='Home_Team', how='left')
+        merged = pd.merge(merged, opp_grades, on='Away_Team', how='left')
+        merged = _calculate_advantages(merged)
+        merged = _classify_significance(merged)
+        merged = _compute_probabilities(merged)
+        merged = _decide_picks(merged)
+        merged = merged[merged['Game_Pick'] != 'No Pick']
+        if merged.empty:
+            logger.info(f"Week {week_str}: no confident picks")
+            return merged
+        merged = merged.sort_values(by='Overall_Adv', ascending=False)
+        output_cols = [
+            'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close',
+            'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
+            'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig',
+            'Home_Win_Prob', 'Away_Win_Prob'
+        ]
+        for c in output_cols:
+            if c not in merged.columns:
+                merged[c] = np.nan
+        picks_df = merged[output_cols]
+
+        # Save CSV (optional)
+        output_path = f"{config.DATA_DIR}/picks/WEEK{week_str}.csv"
+        picks_df.to_csv(output_path, index=False)
+        logger.info(f"Week {week_str}: picks saved to {output_path}")
+        return picks_df
     except Exception as e:
-        logger.error(f"Error querying matchups for week {week_str}: {e}")
-        # Fallback to reading from CSV
-        try:
-            matchups = pd.read_csv(f"{config.DATA_DIR}/matchups/matchups_WEEK{week_str}.csv")
-            logger.info(f"Successfully loaded matchups from CSV for week {week_str}")
-        except Exception as csv_e:
-            logger.error(f"Error reading matchups CSV for week {week_str}: {csv_e}")
-            return pd.DataFrame()  # Return empty DataFrame if no data available
-
-    # Skip if no matchups found
-    if matchups.empty:
-        logger.warning(f"No matchups found for week {week_str}")
+        logger.exception(f"generate_week_picks error for week {week_str}: {e}")
         return pd.DataFrame()
+    finally:
+        conn.close()
 
-    # Merge grades with matchups
-    merged = pd.merge(matchups, grades, on='Home_Team', how='left')
-    merged = pd.merge(merged, opp_grades, left_on='Away_Team', right_on='Away_Team', how='left',
-                      suffixes=('_Home', '_Away'))
-
-    # Calculate advantage values
-    merged['Overall_Advantage'] = merged['Overall_Grade_Home'] - merged['Overall_Grade_Away']
-    merged['Off_Advantage'] = merged['Off_Grade_Home'] - merged['Off_Grade_Away']
-    merged['Def_Advantage'] = merged['Def_Grade_Home'] - merged['Def_Grade_Away']
-
-    # Calculate score prediction
-    merged['Predicted_Home_Score'] = 24 + round(merged['Overall_Advantage'] / 2)
-    merged['Predicted_Away_Score'] = 24 - round(merged['Overall_Advantage'] / 2)
-    merged['Predicted_Point_Diff'] = merged['Predicted_Home_Score'] - merged['Predicted_Away_Score']
-
-    # Calculate spread coverage
-    if 'Spread' in merged.columns:
-        merged['Pick_Covers_Spread'] = merged.apply(
-            lambda row: row['Home_Team'] if row['Predicted_Point_Diff'] > row['Spread'] else row['Away_Team'],
-            axis=1
-        )
-    else:
-        # Default to home team if no spread available
-        merged['Pick_Covers_Spread'] = merged['Home_Team']
-
-    # Add confidence calculation
-    merged['Confidence'] = merged['Overall_Advantage'].abs() / 10
-    merged['Confidence'] = merged['Confidence'].apply(lambda x: min(round(x, 2), 0.9))
-
-    # Select relevant columns for output
-    picks_df = merged[[
-        'Week', 'Home_Team', 'Away_Team',
-        'Overall_Grade_Home', 'Overall_Grade_Away', 'Overall_Advantage',
-        'Predicted_Home_Score', 'Predicted_Away_Score', 'Predicted_Point_Diff',
-        'Pick_Covers_Spread', 'Confidence'
-    ]]
-
-    # Save to CSV (optional) - using logger instead of print
-    output_path = f"{config.DATA_DIR}/picks/WEEK{week_str}.csv"
-    picks_df.to_csv(output_path, index=False)
-    logger.info(f"Picks saved to {output_path}")
-
-    return picks_df
 
 if __name__ == '__main__':
     makePicks()

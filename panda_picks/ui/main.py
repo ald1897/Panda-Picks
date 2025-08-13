@@ -22,8 +22,9 @@ def get_total_picks():
         result = cursor.fetchone()[0]
         conn.close()
         return result
-    except:
-        return 128  # Fallback value
+    except Exception:
+        # No placeholder value; only return 0 if query fails
+        return 0
 
 def get_win_rate():
     try:
@@ -59,7 +60,7 @@ def get_recent_picks():
         SELECT WEEK, Home_Team, Away_Team, Game_Pick, 
         CASE WHEN Pick_Covered_Spread = 1 THEN 'WIN' WHEN Pick_Covered_Spread = 0 THEN 'LOSS' ELSE 'PENDING' END as Result
         FROM picks_results 
-        ORDER BY WEEK LIMIT 5
+        ORDER BY WEEK LIMIT 15
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -113,82 +114,84 @@ def calculate_win_rates():
             'home': f"{home:.1f}%",
             'away': f"{away:.1f}%"
         }
-    except:
-        # Return placeholder win rates if database query fails
+    except Exception:
+        # Return zero win rates if database query fails (no placeholder sample data)
         return {
-            'overall': '62.5%',
-            'home': '67.8%',
-            'away': '55.2%'
+            'overall': '0.0%',
+            'home': '0.0%',
+            'away': '0.0%'
         }
 
 def get_upcoming_picks():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        # Assuming 'picks' table contains future picks and 'Confidence' column
-        query = """
-        SELECT Week, Home_Team, Away_Team, Game_Pick, Confidence
-        FROM picks 
-        WHERE Game_Date > CURRENT_DATE
-        ORDER BY Week, Game_Date
-        """
-        # Fallback query if the above fails (e.g. no Game_Date column)
-        try:
-            cursor.execute(query)
-        except:
-            cursor.execute("SELECT Week, Home_Team, Away_Team, Game_Pick, 0.85 as Confidence FROM picks")
-
+        # Picks table has no date or explicit confidence; derive a confidence proxy from Overall_Adv
+        cursor.execute("SELECT WEEK, Home_Team, Away_Team, Game_Pick, Overall_Adv FROM picks")
         rows = cursor.fetchall()
         conn.close()
-
-        if rows:
-            return [{'Week': r[0], 'Home_Team': r[1], 'Away_Team': r[2], 'Predicted_Pick': r[3], 'Confidence_Score': f"{r[4]*100:.1f}%"} for r in rows]
+        if not rows:
+            return []
+        # Determine scaling for confidence (normalize absolute Overall_Adv to max)
+        max_adv = max(abs(r[4]) for r in rows if r[4] is not None) or 1
+        data = []
+        for week, home, away, pick, overall_adv in rows:
+            if overall_adv is None:
+                confidence_pct = 'N/A'
+            else:
+                confidence = (abs(overall_adv) / max_adv) * 100
+                confidence_pct = f"{confidence:.1f}%"
+            data.append({
+                'Week': week,
+                'Home_Team': home,
+                'Away_Team': away,
+                'Predicted_Pick': pick,
+                'Confidence_Score': confidence_pct
+            })
+        return data
+    except Exception:
         return []
-    except:
-        return [
-            {'Week': 'WEEK2', 'Home_Team': 'BUF', 'Away_Team': 'JAX', 'Predicted_Pick': 'BUF', 'Confidence_Score': '88.2%'},
-            {'Week': 'WEEK2', 'Home_Team': 'DAL', 'Away_Team': 'NO', 'Predicted_Pick': 'DAL', 'Confidence_Score': '75.1%'},
-        ]
-
-
 
 def get_team_grades():
+    """Fetch team grades using actual schema columns (OVR, OFF, DEF)."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT Team, Overall_Grade, Offense_Grade, Defense_Grade FROM grades")
+        cursor.execute("SELECT TEAM, OVR, OFF, DEF FROM grades")
         rows = cursor.fetchall()
         conn.close()
         if rows:
-            return [{'Team': r[0], 'Overall_Grade': r[1], 'Offense_Grade': r[2], 'Defense_Grade': r[3]} for r in rows]
+            return [
+                {'Team': r[0], 'Overall_Grade': r[1], 'Offense_Grade': r[2], 'Defense_Grade': r[3]}
+                for r in rows
+            ]
         return []
-    except:
-        return [
-            {'Team': 'Green Bay Packers', 'Overall_Grade': 92.5, 'Offense_Grade': 90.1, 'Defense_Grade': 88.5},
-            {'Team': 'Kansas City Chiefs', 'Overall_Grade': 91.8, 'Offense_Grade': 93.2, 'Defense_Grade': 85.4},
-        ]
+    except Exception:
+        return []
 
 def get_spreads_data():
+    """Return spreads data using Home_Line_Close as the line (spread)."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT Week, Home_Team, Away_Team, Spread FROM spreads")
+        cursor.execute("SELECT WEEK, Home_Team, Away_Team, Home_Line_Close FROM spreads")
         rows = cursor.fetchall()
         conn.close()
         if rows:
-            return [{'Week': r[0], 'Home_Team': r[1], 'Away_Team': r[2], 'Spread': r[3]} for r in rows]
+            return [
+                {'Week': r[0], 'Home_Team': r[1], 'Away_Team': r[2], 'Line': r[3]}
+                for r in rows
+            ]
         return []
-    except:
-        return [
-            {'Week': 'WEEK1', 'Home_Team': 'KC', 'Away_Team': 'BAL', 'Spread': -3.5},
-            {'Week': 'WEEK1', 'Home_Team': 'SF', 'Away_Team': 'LA', 'Spread': -7.0},
-        ]
+    except Exception:
+        return []
 
 def run_backtest(strategy: str):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        query = "SELECT Home_Team, Away_Team, Home_Score, Away_Score, Spread FROM spreads WHERE Home_Score IS NOT NULL"
+        # Use Home_Line_Close as the spread (negative => home favorite)
+        query = "SELECT Home_Team, Away_Team, Home_Score, Away_Score, Home_Line_Close FROM spreads WHERE Home_Score IS NOT NULL"
         cursor.execute(query)
         games = cursor.fetchall()
         conn.close()
@@ -201,9 +204,11 @@ def run_backtest(strategy: str):
         total_bets = 0
         chart_data = [{'game': 0, 'profit': 0}]
 
-        for i, (home_team, away_team, home_score, away_score, spread) in enumerate(games):
-            favorite = home_team if spread < 0 else away_team
-            underdog = away_team if spread < 0 else home_team
+        for i, (home_team, away_team, home_score, away_score, home_line) in enumerate(games):
+            if home_line is None:
+                continue
+            favorite = home_team if home_line < 0 else away_team
+            underdog = away_team if home_line < 0 else home_team
 
             bet_on = None
             if strategy == 'Favorites':
@@ -216,22 +221,20 @@ def run_backtest(strategy: str):
             if bet_on is None:
                 continue
 
-            actual_spread = away_score - home_score
-            covered_spread = actual_spread + spread
-
-            won = False
-            if covered_spread == 0:
+            # Determine which side covered
+            # Home covers if home_score + spread > away_score
+            if home_score is None or away_score is None:
+                continue
+            home_covers = (home_score + home_line) > away_score
+            if (home_score + home_line) == away_score:  # push
                 continue
 
             total_bets += 1
-
-            if (bet_on == home_team and covered_spread > 0) or \
-               (bet_on == away_team and covered_spread < 0):
-                won = True
+            won = (bet_on == home_team and home_covers) or (bet_on == away_team and not home_covers)
 
             if won:
                 wins += 1
-                profit += 91
+                profit += 91  # assuming -110 odds payout net +91 on 100 stake
             else:
                 profit -= 100
 
@@ -252,58 +255,61 @@ def run_backtest(strategy: str):
             'chart_data': chart_data,
         }
     except Exception:
+        # On failure return neutral metrics (remove placeholder profitable series)
         return {
-            'metrics': {'roi': '7.2%', 'win_rate': '55.1%', 'profit_loss': '$1,450'},
-            'chart_data': [{'game': i, 'profit': i * 10} for i in range(100)],
+            'metrics': {'roi': '0.0%', 'win_rate': '0.0%', 'profit_loss': '$0'},
+            'chart_data': []
         }
 
 def get_all_team_names():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT Team FROM grades ORDER BY Team")
+        cursor.execute("SELECT DISTINCT TEAM FROM grades ORDER BY TEAM")
         teams = [row[0] for row in cursor.fetchall()]
         conn.close()
-        return teams if teams else ['Green Bay Packers', 'Kansas City Chiefs']
-    except:
-        return ['Green Bay Packers', 'Kansas City Chiefs']
+        return teams if teams else []
+    except Exception:
+        return []
 
 def get_team_details(team_name: str):
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT Overall_Grade, Offense_Grade, Defense_Grade FROM grades WHERE Team = ?", (team_name,))
+        cursor.execute("SELECT OVR, OFF, DEF FROM grades WHERE TEAM = ?", (team_name,))
         grades = cursor.fetchone()
 
         cursor.execute("""
-            SELECT Week, Home_Team, Away_Team, Home_Score, Away_Score
+            SELECT WEEK, Home_Team, Away_Team, Home_Score, Away_Score
             FROM spreads
             WHERE (Home_Team = ? OR Away_Team = ?) AND Home_Score IS NOT NULL
-            ORDER BY Week DESC LIMIT 5
+            ORDER BY WEEK DESC LIMIT 5
         """, (team_name, team_name))
         recent_results = cursor.fetchall()
 
         cursor.execute("""
-            SELECT Week, Home_Team, Away_Team
+            SELECT WEEK, Home_Team, Away_Team
             FROM spreads
             WHERE (Home_Team = ? OR Away_Team = ?) AND Home_Score IS NULL
-            ORDER BY Week ASC LIMIT 5
+            ORDER BY WEEK ASC LIMIT 5
         """, (team_name, team_name))
         upcoming_schedule = cursor.fetchall()
 
-        cursor.execute("SELECT Home_Team, Away_Team, Home_Score, Away_Score, Spread FROM spreads WHERE Home_Score IS NOT NULL AND (Home_Team = ? OR Away_Team = ?)", (team_name, team_name))
+        cursor.execute("SELECT Home_Team, Away_Team, Home_Score, Away_Score, Home_Line_Close, Away_Line_Close FROM spreads WHERE Home_Score IS NOT NULL AND (Home_Team = ? OR Away_Team = ?)", (team_name, team_name))
         all_games = cursor.fetchall()
 
         ats_wins = 0
         ats_losses = 0
-        for home_team, away_team, home_score, away_score, spread in all_games:
-            actual_spread = away_score - home_score
-            covered_spread = actual_spread + spread
-            if covered_spread == 0: continue
-
-            if (team_name == home_team and covered_spread > 0) or \
-               (team_name == away_team and covered_spread < 0):
+        for home_team, away_team, home_score, away_score, home_line, away_line in all_games:
+            if home_score is None or away_score is None or home_line is None:
+                continue
+            # Determine cover: home covers if home_score + home_line > away_score
+            if (home_score + home_line) == away_score:  # push
+                continue
+            home_covers = (home_score + home_line) > away_score
+            team_is_home = (team_name == home_team)
+            if (team_is_home and home_covers) or ((not team_is_home) and (not home_covers)):
                 ats_wins += 1
             else:
                 ats_losses += 1
@@ -312,93 +318,133 @@ def get_team_details(team_name: str):
 
         return {
             'grades': {'Overall': grades[0], 'Offense': grades[1], 'Defense': grades[2]} if grades else {},
-            'recent_results': [{'Week': r[0], 'Matchup': f"{r[2]} @ {r[1]}", 'Score': f"{r[4]}-{r[3]}"} for r in recent_results],
-            'upcoming_schedule': [{'Week': r[0], 'Matchup': f"{r[2]} @ {r[1]}"} for r in upcoming_schedule],
+            'recent_results': [
+                {'Week': r[0], 'Matchup': f"{r[2]} @ {r[1]}", 'Score': f"{r[4]}-{r[3]}"}
+                for r in recent_results
+            ],
+            'upcoming_schedule': [
+                {'Week': r[0], 'Matchup': f"{r[2]} @ {r[1]}"}
+                for r in upcoming_schedule
+            ],
             'ats_record': f"{ats_wins}-{ats_losses}"
         }
     except Exception:
         return {
-            'grades': {'Overall': '92.5', 'Offense': '90.1', 'Defense': '88.5'},
-            'recent_results': [{'Week': 'WEEK1', 'Matchup': 'CHI @ GB', 'Score': '17-24'}],
-            'upcoming_schedule': [{'Week': 'WEEK2', 'Matchup': 'GB @ PHI'}],
-            'ats_record': '10-7'
+            'grades': {},
+            'recent_results': [],
+            'upcoming_schedule': [],
+            'ats_record': '0-0'
         }
 
 def get_win_rate_trend():
-    """Get weekly win rate data for trend chart"""
+    """Return weekly win rates (percentage) based on picks_results or fallback join."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
-        # Get weekly results ordered by week
+        # Primary: picks_results (trim week values)
         cursor.execute("""
-            SELECT WEEK, 
-                   COUNT(*) as total_picks,
-                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) as wins
-            FROM picks_results 
-            WHERE Pick_Covered_Spread IS NOT NULL
-            GROUP BY WEEK 
-            ORDER BY CASE 
-                WHEN WEEK = 'WEEK1' THEN 1
-                WHEN WEEK = 'WEEK2' THEN 2
-                WHEN WEEK = 'WEEK3' THEN 3
-                WHEN WEEK = 'WEEK4' THEN 4
-                WHEN WEEK = 'WEEK5' THEN 5
-                WHEN WEEK = 'WEEK6' THEN 6
-                WHEN WEEK = 'WEEK7' THEN 7
-                WHEN WEEK = 'WEEK8' THEN 8
-                WHEN WEEK = 'WEEK9' THEN 9
-                WHEN WEEK = 'WEEK10' THEN 10
-                WHEN WEEK = 'WEEK11' THEN 11
-                WHEN WEEK = 'WEEK12' THEN 12
-                WHEN WEEK = 'WEEK13' THEN 13
-                WHEN WEEK = 'WEEK14' THEN 14
-                WHEN WEEK = 'WEEK15' THEN 15
-                WHEN WEEK = 'WEEK16' THEN 16
-                WHEN WEEK = 'WEEK17' THEN 17
-                WHEN WEEK = 'WEEK18' THEN 18
-            END
+            SELECT TRIM(WEEK) as WK,
+                   SUM(CASE WHEN Pick_Covered_Spread IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
+                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) AS wins
+            FROM picks_results
+            GROUP BY TRIM(WEEK)
+            HAVING total_picks > 0
+            ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
         """)
-
-        results = cursor.fetchall()
+        rows = cursor.fetchall()
+        if not rows:
+            cursor.execute("""
+                SELECT TRIM(p.WEEK) as WK,
+                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL THEN 1 ELSE 0 END) AS total_games,
+                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL AND 
+                                (
+                                   (p.Game_Pick = p.Home_Team AND (s.Home_Score + s.Home_Line_Close) > s.Away_Score AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score) OR
+                                   (p.Game_Pick = p.Away_Team AND NOT ((s.Home_Score + s.Home_Line_Close) > s.Away_Score) AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score)
+                                )
+                           THEN 1 ELSE 0 END) AS wins
+                FROM picks p
+                JOIN spreads s ON TRIM(p.WEEK) = TRIM(s.WEEK) AND p.Home_Team = s.Home_Team AND p.Away_Team = s.Away_Team
+                GROUP BY TRIM(p.WEEK)
+                HAVING total_games > 0
+                ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
+            """)
+            rows = cursor.fetchall()
         conn.close()
-
-        if not results:
-            return {'weeks': [], 'win_rates': [], 'cumulative_rates': []}
-
+        if not rows:
+            return {'weeks': [], 'win_rates': []}
         weeks = []
         win_rates = []
-        cumulative_rates = []
+        for week, total_picks, wins in rows:
+            if total_picks and total_picks > 0:
+                weeks.append(week)
+                pct = round((wins / total_picks) * 100, 1)
+                win_rates.append(pct)
+        return {'weeks': weeks, 'win_rates': win_rates}
+    except Exception:
+        return {'weeks': [], 'win_rates': []}
 
-        total_wins = 0
-        total_games = 0
-
-        for week, total_picks, wins in results:
-            # Weekly win rate
-            weekly_rate = (wins / total_picks) * 100 if total_picks > 0 else 0
-
-            # Cumulative win rate
-            total_wins += wins
-            total_games += total_picks
-            cumulative_rate = (total_wins / total_games) * 100 if total_games > 0 else 0
-
-            weeks.append(week)
-            win_rates.append(round(weekly_rate, 1))
-            cumulative_rates.append(round(cumulative_rate, 1))
-
-        return {
-            'weeks': weeks,
-            'win_rates': win_rates,
-            'cumulative_rates': cumulative_rates
-        }
-
-    except Exception as e:
-        # Fallback data for demo purposes
-        return {
-            'weeks': ['WEEK1', 'WEEK2', 'WEEK3', 'WEEK4', 'WEEK5'],
-            'win_rates': [66.7, 57.1, 62.5, 71.4, 60.0],
-            'cumulative_rates': [66.7, 61.5, 62.0, 64.3, 63.5]
-        }
+def get_weekly_win_rate_rows():
+    """Return list of dicts: Week, Total_Picks, Wins, Losses, Win_Rate (str).
+    Week is zero-padded (WEEK01) for proper lexical sorting in UI."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        # Primary: picks_results with Pick_Covered_Spread
+        cursor.execute("""
+            SELECT TRIM(WEEK) as WK,
+                   SUM(CASE WHEN Pick_Covered_Spread IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
+                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN Pick_Covered_Spread = 0 THEN 1 ELSE 0 END) AS losses
+            FROM picks_results
+            GROUP BY TRIM(WEEK)
+            HAVING total_picks > 0
+            ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
+        """)
+        rows = cursor.fetchall()
+        if not rows:
+            # Fallback join (derive wins)
+            cursor.execute("""
+                SELECT TRIM(p.WEEK) as WK,
+                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
+                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL AND 
+                                ( (p.Game_Pick = p.Home_Team AND (s.Home_Score + s.Home_Line_Close) > s.Away_Score AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score)
+                                  OR
+                                  (p.Game_Pick = p.Away_Team AND NOT ((s.Home_Score + s.Home_Line_Close) > s.Away_Score) AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score) )
+                           THEN 1 ELSE 0 END) AS wins
+                FROM picks p
+                JOIN spreads s ON TRIM(p.WEEK)=TRIM(s.WEEK) AND p.Home_Team=s.Home_Team AND p.Away_Team=s.Away_Team
+                GROUP BY TRIM(p.WEEK)
+                HAVING total_picks > 0
+                ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
+            """)
+            derived = cursor.fetchall()
+            conn.close()
+            data = []
+            for wk, total_picks, wins in derived:
+                number_part = wk.upper().replace('WEEK','')
+                try:
+                    num = int(number_part)
+                except ValueError:
+                    num = 0
+                padded_week = f"WEEK{num:02d}" if num else wk
+                losses = total_picks - wins if total_picks is not None else 0
+                rate = f"{(wins/total_picks)*100:.1f}%" if total_picks else '0.0%'
+                data.append({'Week': padded_week, 'Total_Picks': total_picks, 'Wins': wins, 'Losses': losses, 'Win_Rate': rate})
+            return data
+        conn.close()
+        data = []
+        for wk, total_picks, wins, losses in rows:
+            number_part = wk.upper().replace('WEEK','')
+            try:
+                num = int(number_part)
+            except ValueError:
+                num = 0
+            padded_week = f"WEEK{num:02d}" if num else wk
+            rate = f"{(wins/total_picks)*100:.1f}%" if total_picks else '0.0%'
+            data.append({'Week': padded_week, 'Total_Picks': total_picks, 'Wins': wins, 'Losses': losses, 'Win_Rate': rate})
+        return data
+    except Exception:
+        return []
 
 @ui.page('/')  # normal index page (e.g. the entry point of the app)
 @ui.page('/{_:path}')  # all other pages will be handled by the router but must be registered to also show the SPA index page
@@ -551,79 +597,26 @@ def main():
                     ui.label('Away Team Picks').classes('text-subtitle1')
                     ui.label(win_rates['away']).classes('text-h5 text-weight-bold')
 
-        # Placeholder chart
+        # Weekly win rate table
         with ui.card().classes('w-full q-mt-lg shadow-lg'):
-            ui.label('Win Rate Trend').classes('text-h6 q-pa-md')
-
-            # Get trend data
-            trend_data = get_win_rate_trend()
-
-            if trend_data['weeks']:
-                # Create the trend chart with matplotlib
-                with ui.matplotlib(figsize=(8, 5)).classes('w-full q-pa-md') as trend_chart:
-                    fig = trend_chart.figure
-                    ax = fig.add_subplot(111)
-
-                    # Plot weekly win rate
-                    ax.plot(range(len(trend_data['weeks'])), trend_data['win_rates'],
-                           marker='o', linewidth=2, label='Weekly Win Rate', color=COLORS['secondary'])
-
-                    # Plot cumulative win rate
-                    ax.plot(range(len(trend_data['weeks'])), trend_data['cumulative_rates'],
-                           marker='s', linewidth=2, label='Cumulative Win Rate', color=COLORS['primary'])
-
-                    # Set x-axis labels to weeks
-                    ax.set_xticks(range(len(trend_data['weeks'])))
-                    ax.set_xticklabels(trend_data['weeks'], rotation=45)
-
-                    # Set y-axis range and labels
-                    ax.set_ylim(0, 100)
-                    ax.set_ylabel('Win Rate (%)')
-                    ax.set_xlabel('Week')
-
-                    # Add grid, title and legend
-                    ax.grid(True, linestyle='--', alpha=0.7)
-                    ax.set_title('Win Rate Trend Over Time')
-                    ax.legend(loc='upper right')
-
-                    # Ensure the layout looks good
-                    fig.tight_layout()
-
-                # Add summary stats below the chart
-                with ui.row().classes('q-pa-md w-full justify-around text-center'):
-                    with ui.column():
-                        ui.label('Best Week').classes('text-subtitle2 text-grey-7')
-                        best_week_idx = trend_data['win_rates'].index(max(trend_data['win_rates']))
-                        ui.label(f"{trend_data['weeks'][best_week_idx]} ({max(trend_data['win_rates'])}%)").classes('text-h6 text-weight-bold')
-
-                    with ui.column():
-                        ui.label('Current Streak').classes('text-subtitle2 text-grey-7')
-                        # Calculate current streak (simplified - last 3 weeks trend)
-                        if len(trend_data['win_rates']) >= 3:
-                            recent_trend = trend_data['win_rates'][-3:]
-                            if all(recent_trend[i] >= recent_trend[i-1] for i in range(1, len(recent_trend))):
-                                ui.label('📈 Improving').classes('text-h6 text-positive')
-                            elif all(recent_trend[i] <= recent_trend[i-1] for i in range(1, len(recent_trend))):
-                                ui.label('📉 Declining').classes('text-h6 text-negative')
-                            else:
-                                ui.label('↔️ Mixed').classes('text-h6 text-grey-8')
-                        else:
-                            ui.label('N/A').classes('text-h6 text-grey-8')
-
-                    with ui.column():
-                        ui.label('Weeks Analyzed').classes('text-subtitle2 text-grey-7')
-                        ui.label(str(len(trend_data['weeks']))).classes('text-h6 text-weight-bold')
+            ui.label('Weekly Win Rates').classes('text-h6 q-pa-md')
+            rows = get_weekly_win_rate_rows()
+            if rows:
+                columns = [
+                    {'name': 'Week', 'label': 'Week', 'field': 'Week', 'sortable': True},
+                    {'name': 'Total_Picks', 'label': 'Total Picks', 'field': 'Total_Picks', 'sortable': True},
+                    {'name': 'Wins', 'label': 'Wins', 'field': 'Wins', 'sortable': True},
+                    {'name': 'Losses', 'label': 'Losses', 'field': 'Losses', 'sortable': True},
+                    {'name': 'Win_Rate', 'label': 'Win Rate', 'field': 'Win_Rate', 'sortable': True},
+                ]
+                table = ui.table(columns=columns, rows=rows, row_key='Week').props('dense bordered').classes('w-full')
+                table.add_slot('top-right', r'''
+                    <q-input borderless dense debounce="300" v-model="props.filter" placeholder="Search Week">
+                      <template v-slot:append><q-icon name="search" /></template>
+                    </q-input>
+                ''')
             else:
-                # Fallback if no data
-                ui.html('''
-                <div style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #9e9e9e;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 10px;">📊</div>
-                        <div>No data available for trend analysis</div>
-                        <div style="font-size: 14px; margin-top: 10px;">Run the populate_picks_results.py script to generate sample data</div>
-                    </div>
-                </div>
-                ''').classes('w-full q-pa-md')
+                ui.label('No weekly win rate data available.').classes('q-pa-md')
 
     @router.add('/picks')
     def picks():
@@ -692,7 +685,7 @@ def main():
                     {'name': 'Week', 'label': 'Week', 'field': 'Week', 'sortable': True},
                     {'name': 'Home_Team', 'label': 'Home Team', 'field': 'Home_Team', 'sortable': True},
                     {'name': 'Away_Team', 'label': 'Away Team', 'field': 'Away_Team', 'sortable': True},
-                    {'name': 'Spread', 'label': 'Spread', 'field': 'Spread', 'sortable': True},
+                    {'name': 'Line', 'label': 'Home Line Close', 'field': 'Line', 'sortable': True},
                 ]
                 ui.table(columns=columns, rows=spreads_data, row_key='Week').classes('w-full')
             else:
