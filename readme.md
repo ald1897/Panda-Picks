@@ -6,7 +6,7 @@
   <a href="https://github.com/ald1897/Panda-Picks/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ald1897/Panda-Picks" alt="License" /></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python Version" />
   <img src="https://img.shields.io/badge/status-active-success.svg" alt="Project Status" />
-  <a href="https://raw.githubusercontent.com/ald1897/Panda-Picks/main/badges/roi.json"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ald1897/Panda-Picks/main/badges/roi.json" alt="ROI Season" /></a>
+  <a href="https://raw.githubusercontent.com/ald1897/Panda-Picks/main/scripts/badges/roi.json"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ald1897/Panda-Picks/main/scripts/badges/roi.json" alt="ROI Season" /></a>
 </p>
 
 # Panda Picks
