@@ -112,7 +112,7 @@ def backtest(simulate_missing: bool = True):
     initial_balance = 500  # Starting balance
     current_balance = initial_balance
 
-    conn = sqlite3.connect('nfl_data.db')
+    # Remove redundant direct sqlite3.connect; rely on configured connection
     conn = get_connection()
 
     probability_game_rows = []
@@ -129,12 +129,34 @@ def backtest(simulate_missing: bool = True):
         pd.set_option('display.max_rows', 200)
         pd.set_option('display.max_columns', 200)
 
+        # Consolidate duplicated line columns first
         if 'Home_Line_Close_y' in merged_df.columns:
             merged_df = merged_df.drop(columns=['Home_Line_Close_y', 'Away_Line_Close_y'])
             merged_df = merged_df.rename(columns={'Home_Line_Close_x': 'Home_Line_Close', 'Away_Line_Close_x': 'Away_Line_Close'})
 
-        merged_df = merged_df.rename(columns={'WINS_x': 'Home_Wins', 'LOSSES_x': 'Home_Losses', 'TIES_x': 'Home_Ties'})
-        merged_df = merged_df.rename(columns={'WINS_y': 'Away_Wins', 'LOSSES_y': 'Away_Losses', 'TIES_y': 'Away_Ties'})
+        # NEW: Consolidate duplicated odds columns (avoid KeyError 'Home_Odds_Close')
+        for base in ['Home_Odds_Close', 'Away_Odds_Close', 'Home_Odds_Open', 'Away_Odds_Open']:
+            x_col, y_col = f"{base}_x", f"{base}_y"
+            if x_col in merged_df.columns and y_col in merged_df.columns:
+                # Prefer picks (x) unless it's entirely NaN and y has data
+                if merged_df[x_col].notna().any() or not merged_df[y_col].notna().any():
+                    merged_df[base] = merged_df[x_col]
+                else:
+                    merged_df[base] = merged_df[y_col]
+                merged_df = merged_df.drop(columns=[x_col, y_col])
+            elif x_col in merged_df.columns:
+                merged_df = merged_df.rename(columns={x_col: base})
+            elif y_col in merged_df.columns:
+                merged_df = merged_df.rename(columns={y_col: base})
+            # else: column absent in both; leave missing, later guards will skip usage
+
+        # Rename win/loss/tie columns if present (guard against absence)
+        for suffix in ['WINS', 'LOSSES', 'TIES']:
+            hx, hy = f"{suffix}_x", f"{suffix}_y"
+            if hx in merged_df.columns:
+                merged_df = merged_df.rename(columns={hx: f"Home_{suffix.title()}"})
+            if hy in merged_df.columns:
+                merged_df = merged_df.rename(columns={hy: f"Away_{suffix.title()}"})
 
         # Simulate scores if missing (adds Simulated_Score flag)
         if simulate_missing:
@@ -143,28 +165,33 @@ def backtest(simulate_missing: bool = True):
             if 'Simulated_Score' not in merged_df.columns:
                 merged_df['Simulated_Score'] = False
 
-        # Probability + edges (before teaser spread adjustment, using original closing line)
+        # Probability + edges (only if probability column present)
         if 'Home_Win_Prob' in merged_df.columns:
-            merged_df['Home_Odds_Implied_Prob'] = merged_df['Home_Odds_Close'].apply(_moneyline_implied_prob)
-            merged_df['Away_Odds_Implied_Prob'] = merged_df['Away_Odds_Close'].apply(_moneyline_implied_prob)
-            merged_df['Home_Spread_Implied_Prob'] = merged_df['Home_Line_Close'].apply(_spread_implied_home_win_prob)
+            # Guard: only compute implied probabilities if odds columns exist
+            if 'Home_Odds_Close' in merged_df.columns:
+                merged_df['Home_Odds_Implied_Prob'] = merged_df['Home_Odds_Close'].apply(_moneyline_implied_prob)
+            else:
+                merged_df['Home_Odds_Implied_Prob'] = math.nan
+            if 'Away_Odds_Close' in merged_df.columns:
+                merged_df['Away_Odds_Implied_Prob'] = merged_df['Away_Odds_Close'].apply(_moneyline_implied_prob)
+            else:
+                merged_df['Away_Odds_Implied_Prob'] = math.nan
+            merged_df['Home_Spread_Implied_Prob'] = merged_df['Home_Line_Close'].apply(_spread_implied_home_win_prob) if 'Home_Line_Close' in merged_df.columns else math.nan
             merged_df['Home_Edge_ML'] = merged_df['Home_Win_Prob'] - merged_df['Home_Odds_Implied_Prob']
             merged_df['Home_Edge_Spread'] = merged_df['Home_Win_Prob'] - merged_df['Home_Spread_Implied_Prob']
-            # Actual outcome only for non-simulated rows with scores
             def _actual(row):
                 if row.get('Simulated_Score', False):
-                    return np.nan
+                    return math.nan
                 if pd.isna(row.get('Home_Score')) or pd.isna(row.get('Away_Score')):
-                    return np.nan
+                    return math.nan
                 return 1.0 if row['Home_Score'] > row['Away_Score'] else 0.0
             merged_df['Home_Win_Actual'] = merged_df.apply(_actual, axis=1)
             merged_df['Pick_Edge_ML'] = merged_df.apply(lambda r: (r['Home_Edge_ML'] if r['Game_Pick'] == r['Home_Team'] else -r['Home_Edge_ML']) if not math.isnan(r.get('Home_Edge_ML', float('nan'))) else float('nan'), axis=1)
             merged_df['Pick_Edge_Spread'] = merged_df.apply(lambda r: (r['Home_Edge_Spread'] if r['Game_Pick'] == r['Home_Team'] else -r['Home_Edge_Spread']) if not math.isnan(r.get('Home_Edge_Spread', float('nan'))) else float('nan'), axis=1)
-            # Store per-game probability metrics including simulation flag
-            probability_game_rows.extend(merged_df[[
-                'WEEK','Home_Team','Away_Team','Home_Line_Close','Home_Odds_Close','Away_Odds_Close','Home_Win_Prob','Home_Odds_Implied_Prob','Home_Spread_Implied_Prob','Home_Edge_ML','Home_Edge_Spread','Home_Win_Actual','Game_Pick','Pick_Edge_ML','Pick_Edge_Spread','Simulated_Score'
-            ]].to_dict('records'))
-            # Weekly metrics only for real games
+            # Build ordered list of available columns (avoid using set as indexer)
+            prob_cols_order = ['WEEK','Home_Team','Away_Team','Home_Line_Close','Home_Odds_Close','Away_Odds_Close','Home_Win_Prob','Home_Odds_Implied_Prob','Home_Spread_Implied_Prob','Home_Edge_ML','Home_Edge_Spread','Home_Win_Actual','Game_Pick','Pick_Edge_ML','Pick_Edge_Spread','Simulated_Score']
+            available_cols = [c for c in prob_cols_order if c in merged_df.columns]
+            probability_game_rows.extend(merged_df[available_cols].to_dict('records'))
             real_week = merged_df[(merged_df['Simulated_Score'] == False) & merged_df['Home_Win_Actual'].notna()]
             if not real_week.empty:
                 eps = 1e-6
@@ -249,6 +276,11 @@ def backtest(simulate_missing: bool = True):
             cur = conn.cursor()
             cur.execute("DELETE FROM picks_results WHERE WEEK = ?", (week,))
             cur.execute("DELETE FROM teaser_results WHERE WEEK = ?", (week,))
+            # Drop deprecated columns to avoid schema bloat and duplicate ALTER attempts
+            deprecated_cols = ['Off_Comp_Adv_sig','Def_Comp_Adv_sig','Off_Comp_Adv','Def_Comp_Adv']
+            drop_cols = [c for c in deprecated_cols if c in merged_df.columns]
+            if drop_cols:
+                merged_df = merged_df.drop(columns=drop_cols)
             _ensure_sql_columns(conn, 'picks_results', merged_df)
             _ensure_sql_columns(conn, 'teaser_results', teaser_df)
         merged_df.to_sql('picks_results', conn, if_exists='append', index=False)
@@ -317,7 +349,7 @@ def _ensure_sql_columns(conn, table_name: str, df: pd.DataFrame):
             cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {col_type}")
         except Exception as e:
             if 'duplicate column name' in str(e).lower():
-                logging.warning(f"Column {col} already exists in {table_name}, skipping")
+                logging.debug(f"(suppressed duplicate) Column {col} already exists in {table_name}")
             else:
                 raise
     conn.commit()
