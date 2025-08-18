@@ -18,3 +18,4 @@ lxml>=4.9.0
 joblib>=1.3.0
 fastmcp>=0.7.0  # MCP server framework
 apscheduler>=3.10.0  # For scheduling data collection
+pytest>=7.0.0  # Added for tests

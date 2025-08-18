@@ -9,11 +9,15 @@ import pandas as pd
 
 from panda_picks.db.database import get_connection
 from panda_picks.analysis.picks import ADVANTAGE_BASE_COLUMNS, K_PROB_SCALE
+from panda_picks.config.settings import Settings
+from panda_picks.analysis.utils.probability import calculate_win_probability
 
-SIMULATION_SEED = 123
-SIM_K_MARGIN = 0.75
-SIM_BASE_TOTAL = 44
-SIM_TOTAL_JITTER = 7
+# Use centralized simulation settings
+# (kept variable names for backward compatibility in rest of file if referenced)
+SIMULATION_SEED = Settings.SIMULATION_SEED
+SIM_K_MARGIN = Settings.SIM_K_MARGIN
+SIM_BASE_TOTAL = Settings.SIM_BASE_TOTAL
+SIM_TOTAL_JITTER = Settings.SIM_TOTAL_JITTER
 
 PRIMARY_ADV_COLS = ['Overall_Adv', 'Offense_Adv', 'Defense_Adv']
 
@@ -85,7 +89,8 @@ def _moneyline_profit(odds, stake=1.0):
 
 
 def _logistic_prob(overall_adv):
-    return 1.0 / (1 + math.exp(-K_PROB_SCALE * overall_adv))
+    # Bridge to centralized function
+    return calculate_win_probability(overall_adv)
 
 
 def tune_thresholds(
@@ -200,4 +205,3 @@ if __name__ == '__main__':
     df = tune_thresholds()
     if not df.empty:
         print(df.head(10))
-

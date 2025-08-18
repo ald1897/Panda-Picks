@@ -52,3 +52,10 @@ build/
 .idea/
 .vscode/
 *.swp
+
+# Project data artifact ignores (added)
+data/picks/compare_*.csv
+data/picks/compare.csv
+data/picks/stats.csv
+data/matchups/*.csv
+# Legacy uppercase patterns retained above for cross-platform consistency

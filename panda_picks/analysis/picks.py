@@ -5,17 +5,15 @@ import time
 
 from panda_picks.db.database import get_connection
 from panda_picks import config
+from panda_picks.config.settings import Settings
+from panda_picks.analysis.utils.probability import calculate_win_probability
 
-# ---------------- New configuration / helper functions ---------------- #
-SIGNIFICANCE_THRESHOLDS = {
-    'Overall_Adv': 2.0,      # default, will be overridden if tuning results exist
-    'Offense_Adv': 2.0,
-    'Defense_Adv': 2.0
-}
-K_PROB_SCALE = 0.10  # scaling factor to convert grade diff to win probability proxy (fallback)
-EDGE_MIN = 0.035  # minimum absolute probability edge required to keep a pick
-MARGIN_K = 0.75   # converts Overall_Adv to expected point margin
-MARGIN_SD = 13.5  # stdev for margin distribution normal approx
+# ---------------- Centralized configuration via Settings ---------------- #
+SIGNIFICANCE_THRESHOLDS = Settings.ADVANTAGE_THRESHOLDS  # shared mutable dict
+K_PROB_SCALE = Settings.K_PROB_SCALE
+EDGE_MIN = Settings.EDGE_MIN
+MARGIN_K = Settings.MARGIN_K
+MARGIN_SD = Settings.MARGIN_SD
 
 # Features expected by calibrated model
 LOGIT_FEATURES = [
@@ -47,7 +45,7 @@ PRIMARY_ADV_COLS = ['Overall_Adv', 'Offense_Adv', 'Defense_Adv']
 
 def _table_exists(conn, table_name: str) -> bool:
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=\"" + table_name + "\"")
     return cur.fetchone() is not None
 
 def _ensure_columns(conn, table_name: str, cols_types: dict):
@@ -105,9 +103,7 @@ def _load_logit_model(conn):
 
 
 def _compute_probabilities(df: pd.DataFrame, conn=None) -> pd.DataFrame:
-    """Compute win probabilities.
-    If calibrated model artifacts exist in DB, use them; otherwise fallback to logistic over Overall_Adv.
-    """
+    """Compute win probabilities using calibrated model if available, else fallback."""
     model = None
     if conn is not None:
         model = _load_logit_model(conn)
@@ -130,7 +126,7 @@ def _compute_probabilities(df: pd.DataFrame, conn=None) -> pd.DataFrame:
         df['Away_Win_Prob'] = 1 - df['Home_Win_Prob']
     else:
         # Fallback simple logistic on overall advantage
-        df['Home_Win_Prob'] = 1 / (1 + np.exp(-K_PROB_SCALE * df['Overall_Adv']))
+        df['Home_Win_Prob'] = df['Overall_Adv'].apply(calculate_win_probability)
         df['Away_Win_Prob'] = 1 - df['Home_Win_Prob']
     return df
 
@@ -240,6 +236,7 @@ def _load_best_thresholds(conn):
         for k, col in [('Overall_Adv','Overall_Thresh'), ('Offense_Adv','Offense_Thresh'), ('Defense_Adv','Defense_Thresh')]:
             if col in best and not pd.isna(best[col]):
                 SIGNIFICANCE_THRESHOLDS[k] = float(best[col])
+        Settings.update_thresholds(**{k: SIGNIFICANCE_THRESHOLDS[k] for k in SIGNIFICANCE_THRESHOLDS})
         logging.info(f"Loaded tuned thresholds: {SIGNIFICANCE_THRESHOLDS}")
     except Exception as e:
         logging.info(f"Threshold tuning table not used ({e}) - using defaults {SIGNIFICANCE_THRESHOLDS}")
