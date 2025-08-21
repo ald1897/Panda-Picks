@@ -2,6 +2,8 @@
 from router import Router
 from nicegui import ui
 from panda_picks.db.database import get_connection
+from panda_picks.analysis.utils.combos import generate_bet_combinations
+import math
 
 # Colors for consistency
 COLORS = {
@@ -446,6 +448,144 @@ def get_weekly_win_rate_rows():
     except Exception:
         return []
 
+def get_week_picks_for_combos(week: str):
+    try:
+        # Accept formats like '1','01','WEEK1','WEEK01'
+        wk = str(week).upper().replace('WEEK','')
+        try:
+            wk_int = int(wk)
+        except ValueError:
+            return []
+        week_key = f"WEEK{wk_int}"
+        conn = get_connection()
+        cursor = conn.cursor()
+        # Join spreads to pull moneyline odds (if present) since picks table lacks them
+        cursor.execute("""
+             SELECT p.WEEK, p.Home_Team, p.Away_Team, p.Game_Pick,
+                    s.Home_Odds_Close, s.Away_Odds_Close,
+                    p.Home_Line_Close, p.Away_Line_Close,
+                    p.Overall_Adv, p.Offense_Adv, p.Defense_Adv,
+                    p.Off_Comp_Adv, p.Def_Comp_Adv
+             FROM picks p
+             LEFT JOIN spreads s
+               ON p.WEEK = s.WEEK AND p.Home_Team = s.Home_Team AND p.Away_Team = s.Away_Team
+             WHERE p.WEEK = ?
+         """, (week_key,))
+        rows = cursor.fetchall()
+        conn.close()
+        if not rows:
+            return []
+
+        def american_to_prob(odds):
+            try:
+                o = float(odds)
+                if o > 0:
+                    return 100.0 / (o + 100.0)
+                else:
+                    return (-o) / ((-o) + 100.0)
+            except Exception:
+                return math.nan
+
+        data = []
+        for r in rows:
+            (wk, home, away, pick_side, home_odds, away_odds, home_line, away_line,
+             overall_adv, off_adv, def_adv, off_comp_adv, def_comp_Adv) = r
+            home_prob = american_to_prob(home_odds)
+            away_prob = american_to_prob(away_odds)
+            # Normalize if both available
+            if not (isinstance(home_prob, float) and math.isnan(home_prob)) and not (isinstance(away_prob, float) and math.isnan(away_prob)):
+                total = home_prob + away_prob
+                if total > 0:
+                    home_prob /= total
+                    away_prob /= total
+            data.append({
+                'WEEK': wk,
+                'Home_Team': home,
+                'Away_Team': away,
+                'Game_Pick': pick_side,
+                'Home_Odds_Close': home_odds,
+                'Away_Odds_Close': away_odds,
+                'Home_Win_Prob': home_prob,
+                'Away_Win_Prob': away_prob,
+                'Pick_Prob': home_prob if pick_side == home else (away_prob if pick_side == away else math.nan),
+                'Pick_Edge': overall_adv,
+                'Home_Line_Close': home_line,
+                'Away_Line_Close': away_line
+            })
+        return data
+    except Exception:
+        return []
+
+def get_available_weeks():
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT WEEK FROM spreads ORDER BY CAST(REPLACE(UPPER(WEEK),'WEEK','') AS INTEGER)")
+        weeks = [row[0] for row in cur.fetchall()]
+        conn.close()
+        return weeks
+    except Exception:
+        return []
+
+def get_week_matchups(week: str):
+    try:
+        if not week:
+            return []
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT WEEK, Home_Team, Away_Team, Home_Line_Close, Home_Odds_Close, Away_Odds_Close
+            FROM spreads WHERE WEEK = ? ORDER BY Home_Team
+        """, (week,))
+        rows = cur.fetchall()
+        conn.close()
+        return [
+            {
+                'Week': r[0],
+                'Home_Team': r[1],
+                'Away_Team': r[2],
+                'Home_Line_Close': r[3],
+                'Home_Odds_Close': r[4],
+                'Away_Odds_Close': r[5],
+                'Label': f"{r[2]} @ {r[1]}"
+            } for r in rows
+        ]
+    except Exception:
+        return []
+
+def get_matchup_details(week: str, home: str, away: str):
+    """Return dict with combined info: spreads, picks (if exists), grades for both teams."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM spreads WHERE WEEK=? AND Home_Team=? AND Away_Team=?", (week, home, away))
+        spread = cur.fetchone()
+        spread_cols = [d[0] for d in cur.description] if spread else []
+        spread_data = dict(zip(spread_cols, spread)) if spread else {}
+        # Picks
+        cur.execute("SELECT * FROM picks WHERE WEEK=? AND Home_Team=? AND Away_Team=?", (week, home, away))
+        pick = cur.fetchone()
+        pick_cols = [d[0] for d in cur.description] if pick else []
+        pick_data = dict(zip(pick_cols, pick)) if pick else {}
+        # Grades (teams stored as TEAM in grades table) - FIX: use cur.description not tuple iteration
+        cur.execute("SELECT * FROM grades WHERE TEAM=?", (home,))
+        home_grade = cur.fetchone()
+        home_cols = [d[0] for d in cur.description] if home_grade else []
+        home_grade_data = dict(zip(home_cols, home_grade)) if home_grade else {}
+        cur.execute("SELECT * FROM grades WHERE TEAM=?", (away,))
+        away_grade = cur.fetchone()
+        away_cols = [d[0] for d in cur.description] if away_grade else []  # corrected
+        away_grade_data = dict(zip(away_cols, away_grade)) if away_grade else {}
+        conn.close()
+        return {
+            'spread': spread_data,
+            'pick': pick_data,
+            'home_grades': home_grade_data,
+            'away_grades': away_grade_data
+        }
+    except Exception:
+        return {'spread': {}, 'pick': {}, 'home_grades': {}, 'away_grades': {}}
+
 @ui.page('/')  # normal index page (e.g. the entry point of the app)
 @ui.page('/{_:path}')  # all other pages will be handled by the router but must be registered to also show the SPA index page
 def main():
@@ -577,46 +717,174 @@ def main():
     def analysis():
         ui.label('Analysis').classes('text-h4 q-mb-lg')
 
-        # Win Rate Stats
-        win_rates = calculate_win_rates()
-
-        # Home vs Away Stats
-        with ui.card().classes('shadow-lg w-full'):
-            ui.label('Home vs Away Win Rate').classes('text-h6 q-pa-md')
-
-            with ui.row().classes('q-pa-md w-full justify-around'):
-                with ui.column().classes('items-center'):
-                    ui.icon('home').classes('text-h3 text-primary')
-                    ui.label('Home Team Picks').classes('text-subtitle1')
-                    ui.label(win_rates['home']).classes('text-h5 text-weight-bold')
-
-                ui.separator().props('vertical')
-
-                with ui.column().classes('items-center'):
-                    ui.icon('flight_takeoff').classes('text-h3 text-secondary')
-                    ui.label('Away Team Picks').classes('text-subtitle1')
-                    ui.label(win_rates['away']).classes('text-h5 text-weight-bold')
-
-        # Weekly win rate table
-        with ui.card().classes('w-full q-mt-lg shadow-lg'):
-            ui.label('Weekly Win Rates').classes('text-h6 q-pa-md')
-            rows = get_weekly_win_rate_rows()
-            if rows:
-                columns = [
-                    {'name': 'Week', 'label': 'Week', 'field': 'Week', 'sortable': True},
-                    {'name': 'Total_Picks', 'label': 'Total Picks', 'field': 'Total_Picks', 'sortable': True},
-                    {'name': 'Wins', 'label': 'Wins', 'field': 'Wins', 'sortable': True},
-                    {'name': 'Losses', 'label': 'Losses', 'field': 'Losses', 'sortable': True},
-                    {'name': 'Win_Rate', 'label': 'Win Rate', 'field': 'Win_Rate', 'sortable': True},
-                ]
-                table = ui.table(columns=columns, rows=rows, row_key='Week').props('dense bordered').classes('w-full')
-                table.add_slot('top-right', r'''
-                    <q-input borderless dense debounce="300" v-model="props.filter" placeholder="Search Week">
-                      <template v-slot:append><q-icon name="search" /></template>
-                    </q-input>
-                ''')
+        # Weekly Win Rate Trend (historical performance)
+        trend = get_win_rate_trend()
+        with ui.card().classes('w-full shadow-lg q-mb-lg'):
+            ui.label('Weekly Win Rate Trend').classes('text-h6 q-pa-md')
+            if trend['weeks']:
+                opts = {
+                    'tooltip': {'trigger': 'axis'},
+                    'xAxis': {'type': 'category', 'data': trend['weeks']},
+                    'yAxis': {'type': 'value', 'min': 0, 'max': 100, 'axisLabel': {'formatter': '{value}%'}},
+                    'series': [{
+                        'name': 'Win Rate', 'type': 'line', 'data': trend['win_rates'],
+                        'smooth': True, 'lineStyle': {'width': 3, 'color': COLORS['primary']},
+                        'areaStyle': {'color': 'rgba(72,135,43,0.15)'}
+                    }]
+                }
+                ui.echart(options=opts).classes('w-full').style('height:300px;')
             else:
-                ui.label('No weekly win rate data available.').classes('q-pa-md')
+                ui.label('No historical picks to display.').classes('q-pa-md text-grey')
+
+        # --- Week & Matchup Selection with Enhanced Formatting --- #
+        with ui.card().classes('w-full shadow-lg q-mb-lg'):
+            ui.label('Matchup Explorer').classes('text-h6 q-pa-md')
+            weeks = get_available_weeks()
+            if weeks:
+                with ui.row().classes('q-pa-sm items-center q-col-gutter-md'):
+                    week_select = ui.select(weeks, value=weeks[0], label='Week').classes('w-1/6')
+                    matchup_select = ui.select([], label='Matchup').classes('w-1/3')
+                comparison_container = ui.column().classes('w-full q-pa-sm gap-4')
+
+                # Core performance grade metrics from grades table
+                metrics = ['OVR','OFF','DEF','PASS','RUN','RECV','PBLK','RBLK','PRSH','COV','RDEF','TACK']
+
+                def fmt(val):
+                    try:
+                        if val is None:
+                            return 'N/A'
+                        if isinstance(val,(int,float)):
+                            return f"{val:.1f}" if abs(val) % 1 else f"{int(val)}"
+                        return str(val)
+                    except Exception:
+                        return 'N/A'
+
+                def refresh_matchups():
+                    m_list = get_week_matchups(week_select.value)
+                    matchup_select.options = [m['Label'] for m in m_list]
+                    matchup_select.value = m_list[0]['Label'] if m_list else None
+                    update_comparison()
+
+                def update_comparison():
+                    comparison_container.clear()
+                    label = matchup_select.value
+                    if not label:
+                        return
+                    try:
+                        parts = label.split('@')
+                        away = parts[0].strip()
+                        home = parts[1].strip()
+                    except Exception:
+                        return
+                    details = get_matchup_details(week_select.value, home, away)
+                    spread = details['spread']
+                    pick = details['pick']
+                    home_gr = details['home_grades']
+                    away_gr = details['away_grades']
+
+                    # Derive advantage metrics from pick table if present
+                    adv_metrics = []
+                    if pick:
+                        # Only show numeric adv columns that exist
+                        for adv_col,label_txt in [
+                            ('Overall_Adv','Overall Advantage'),
+                            ('Offense_Adv','Offense Advantage'),
+                            ('Defense_Adv','Defense Advantage'),
+                            ('Off_Comp_Adv','Off Comp Adv'),
+                            ('Def_Comp_Adv','Def Comp Adv'),
+                        ]:
+                            val = pick.get(adv_col)
+                            if isinstance(val,(int,float)):
+                                adv_metrics.append({'label':label_txt,'value':val})
+
+                    with comparison_container:
+                        # Summary header
+                        with ui.row().classes('items-center justify-between w-full'):
+                            ui.label(f"{away} @ {home}").classes('text-h6')
+                            line_txt = ''
+                            if spread:
+                                hl = spread.get('Home_Line_Close')
+                                if hl is not None:
+                                    line_txt = f"Line: {home} {hl:+}" if isinstance(hl,(int,float)) else f"Line: {hl}"
+                            odds_txt = ''
+                            if spread:
+                                ho = spread.get('Home_Odds_Close')
+                                ao = spread.get('Away_Odds_Close')
+                                if ho is not None and ao is not None:
+                                    odds_txt = f"Odds (H/A): {ho} / {ao}"
+                            # Use Overall_Adv as edge proxy if available
+                            edge_txt = ''
+                            if pick and isinstance(pick.get('Overall_Adv'), (int,float)):
+                                edge_val = pick.get('Overall_Adv')
+                                edge_txt = f"Overall Adv: {edge_val:+.2f}" if edge_val is not None else ''
+                            ui.label(' | '.join([t for t in [line_txt, odds_txt, edge_txt] if t])).classes('text-caption text-grey')
+
+                        # Advantage bars (show relative magnitude scaled to max in list)
+                        if adv_metrics:
+                            max_abs = max(abs(m['value']) for m in adv_metrics) or 1
+                            with ui.column().classes('w-full q-mt-xs'):
+                                for m in adv_metrics:
+                                    pct = (abs(m['value'])/max_abs)
+                                    bar_row = ui.row().classes('items-center w-full')
+                                    with bar_row:
+                                        ui.label(m['label']).classes('text-caption w-1/4')
+                                        # represent negative vs positive by color
+                                        color = 'green' if m['value'] > 0 else 'red'
+                                        ui.linear_progress(value=pct, show_value=False).props(f'color={color}').classes('w-2/4')
+                                        ui.label(f"{m['value']:+.2f}").classes('text-caption w-1/4 text-right')
+
+                        # Side-by-side team cards
+                        with ui.row().classes('w-full q-col-gutter-md'):
+                            with ui.card().classes('w-1/2 shadow'):
+                                ui.label(f"Home: {home}").classes('text-subtitle1 q-mb-xs')
+                                with ui.row().classes('text-caption wrap'):
+                                    for m in metrics:
+                                        if m in home_gr:
+                                            ui.label(f"{m}: {fmt(home_gr.get(m))}").classes('q-mr-md q-mb-xs')
+                                if pick and pick.get('Game_Pick') == home:
+                                    ui.badge('Model Pick', color='green').classes('q-mt-sm')
+                            with ui.card().classes('w-1/2 shadow'):
+                                ui.label(f"Away: {away}").classes('text-subtitle1 q-mb-xs')
+                                with ui.row().classes('text-caption wrap'):
+                                    for m in metrics:
+                                        if m in away_gr:
+                                            ui.label(f"{m}: {fmt(away_gr.get(m))}").classes('q-mr-md q-mb-xs')
+                                if pick and pick.get('Game_Pick') == away:
+                                    ui.badge('Model Pick', color='green').classes('q-mt-sm')
+
+                        # Comparative stats table
+                        rows = []
+                        for m in metrics:
+                            hv = home_gr.get(m)
+                            av = away_gr.get(m)
+                            if hv is None and av is None:
+                                continue
+                            diff = None
+                            if isinstance(hv,(int,float)) and isinstance(av,(int,float)):
+                                diff = hv - av
+                            rows.append({
+                                'Metric': m,
+                                'Home': fmt(hv),
+                                'Away': fmt(av),
+                                'Diff': (f"{diff:+.1f}" if diff is not None else 'N/A'),
+                                '_diff_raw': diff if diff is not None else 0
+                            })
+                        if rows:
+                            cols = [
+                                {'name':'Metric','label':'Metric','field':'Metric','sortable':True},
+                                {'name':'Home','label':home,'field':'Home','sortable':True},
+                                {'name':'Away','label':away,'field':'Away','sortable':True},
+                                {'name':'Diff','label':'Diff (H-A)','field':'Diff','sortable':True},
+                            ]
+                            tbl = ui.table(columns=cols, rows=rows, row_key='Metric').props('dense bordered flat square').classes('w-full')
+                            # Enhanced color + shading for diff cell
+                            tbl.add_slot('body-cell-Diff', r'''<q-td :props="props"><span :style="(() => {const d=props.row._diff_raw; if(d===0) return ''; const a=Math.min(Math.abs(d)/40,0.35); return `background-color:${d>0?`rgba(76,175,80,${a})`:`rgba(244,67,54,${a})`}; padding:2px 4px; border-radius:3px; display:inline-block;`; })()" :class="{'text-green': props.row._diff_raw>0, 'text-red': props.row._diff_raw<0}">{{ props.row.Diff }}</span></q-td>''')
+
+                week_select.on('update:model-value', lambda e: refresh_matchups())
+                matchup_select.on('update:model-value', lambda e: update_comparison())
+                refresh_matchups()
+            else:
+                ui.label('No spreads data found to populate matchups.').classes('q-pa-md')
 
     @router.add('/picks')
     def picks():
@@ -804,6 +1072,120 @@ def main():
         else:
             ui.label('No teams found.')
 
+    @router.add('/combos')
+    def combos_page():
+        ui.label('Bet Combinations (Parlays)').classes('text-h4 q-mb-md')
+        with ui.card().classes('w-full shadow-lg q-pa-md'):
+            with ui.row().classes('items-center q-col-gutter-md'):
+                week_select = ui.select([f"WEEK{i}" for i in range(1,19)], value='WEEK1', label='Select Week').classes('w-1/6')
+                size_multiselect = ui.select(['2','3','4'], value=['2','3','4'], label='Sizes', multiple=True).classes('w-1/6')
+                ui.button('Refresh', icon='refresh', on_click=lambda: update_table()).classes('q-ml-md')
+                export_btn = ui.button('Export CSV', icon='download').props('outline')
+
+        table_container = ui.element('div').classes('w-full')
+
+        def format_american(val):
+            try:
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return 'N/A'
+                v = float(val)
+                sign = '+' if v > 0 else ''
+                # Round to nearest integer (American odds standard)
+                return f"{sign}{int(round(v))}"
+            except Exception:
+                return 'N/A'
+
+        def format_pct(prob):
+            try:
+                if prob is None or (isinstance(prob, float) and math.isnan(prob)):
+                    return 'N/A'
+                return f"{prob*100:.2f}%"
+            except Exception:
+                return 'N/A'
+
+        def format_edge(edge):
+            try:
+                if edge is None or (isinstance(edge, float) and math.isnan(edge)):
+                    return 'N/A'
+                sign = '+' if edge > 0 else ''
+                return f"{sign}{edge*100:.2f}%"
+            except Exception:
+                return 'N/A'
+
+        def update_table():
+            table_container.clear()
+            raw_picks = get_week_picks_for_combos(week_select.value)
+            import pandas as pd, math
+            if not raw_picks or len(raw_picks) < 2:
+                with table_container:
+                    ui.label('Not enough picks for combinations (need at least 2).').classes('q-pa-md')
+                return
+            picks_df = pd.DataFrame(raw_picks)
+            combos = generate_bet_combinations(picks_df, 2, 4)
+            selected_sizes = set(int(s) for s in (size_multiselect.value or []))
+            combos = [c for c in combos if c['Size'] in selected_sizes]
+            if not combos:
+                with table_container:
+                    ui.label('No combinations for selected sizes.').classes('q-pa-md')
+                return
+            rows = []
+            for c in combos:
+                leg_lines = c.get('Leg_Lines', [])
+                bet_lines = []
+                for ll in leg_lines:
+                    cur_disp = ll.get('Current_Line_Display','N/A')
+                    teas_disp = ll.get('Teaser_Line_Display','N/A')
+                    team = ll.get('Team','?')
+                    if cur_disp == 'N/A' and teas_disp == 'N/A':
+                        continue
+                    bet_lines.append(f"{team} {cur_disp} -> {teas_disp} ")
+                bet_info = '<br>'.join(bet_lines) if bet_lines else 'N/A'
+                rows.append({
+                    'Size': c['Size'],
+                    'Teams': c['Teams'],
+                    'Bet_Info': bet_info,
+                    # 'Combined_Prob': format_pct(c.get('Combined_Prob')),
+                    'Book_American': format_american(c.get('Book_American_Odds')),
+                    # 'Fair_American': format_american(c.get('Fair_American_Odds')),
+                    # 'Parlay_Edge': format_edge(c.get('Parlay_Edge')),
+                    'Est_Payout_$100': f"${c['Est_Payout_100']:.2f}" if c.get('Est_Payout_100') == c.get('Est_Payout_100') else 'N/A'
+                })
+            columns = [
+                {'name': 'Size', 'label': 'Legs', 'field': 'Size', 'sortable': True},
+                {'name': 'Teams', 'label': 'Teams', 'field': 'Teams'},
+                {'name': 'Bet_Info', 'label': 'Bet Info', 'field': 'Bet_Info'},
+                # {'name': 'Combined_Prob', 'label': 'Combined Prob', 'field': 'Combined_Prob', 'sortable': True},
+                {'name': 'Book_American', 'label': 'Book Odds (Am)', 'field': 'Book_American', 'sortable': True},
+                # {'name': 'Fair_American', 'label': 'Fair Odds (Am)', 'field': 'Fair_American', 'sortable': True},
+                # {'name': 'Parlay_Edge', 'label': 'Edge (Prob)', 'field': 'Parlay_Edge', 'sortable': True},
+                {'name': 'Est_Payout_$100', 'label': 'Est Payout ($100)', 'field': 'Est_Payout_$100', 'sortable': True},
+            ]
+            with table_container:
+                tbl = ui.table(columns=columns, rows=rows, row_key='Teams').props('dense bordered').classes('w-full')
+                tbl.add_slot('body-cell-Bet_Info', r'''<q-td :props="props"><div v-html="props.row.Bet_Info"></div></q-td>''')
+                tbl.add_slot('top-right', r'''
+                    <q-input borderless dense debounce="300" v-model="props.filter" placeholder="Filter">
+                      <template v-slot:append><q-icon name="search" /></template>
+                    </q-input>
+                ''')
+            # Export logic
+            def do_export():
+                import csv, io
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=[c['name'] for c in columns])
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow({k: r.get(k) for k in writer.fieldnames})
+                ui.download(output.getvalue(), filename=f"combos_{week_select.value}.csv")
+            export_btn.on('click', lambda e: do_export())
+
+        # Initial load
+        update_table()
+
+        # Reactive updates
+        week_select.on('update:model-value', lambda e: update_table())
+        size_multiselect.on('update:model-value', lambda e: update_table())
+
     # Navigation buttons
     with ui.row().classes('q-pa-md w-full bg-white shadow-sm'):
         ui.button('Home', on_click=lambda: router.open(landing), icon='home').classes('q-mr-sm')
@@ -814,6 +1196,7 @@ def main():
         ui.button('Spreads', on_click=lambda: router.open(spreads), icon='timeline').classes('q-mr-sm')
         ui.button('Backtest', on_click=lambda: router.open(backtest_page), icon='science').classes('q-mr-sm')
         ui.button('Teams', on_click=lambda: router.open(team_details_page), icon='groups').classes('q-mr-sm')
+        ui.button('Combos', on_click=lambda: router.open(combos_page), icon='functions').classes('q-mr-sm')
         ui.button('Settings', on_click=lambda: router.open(settings), icon='settings')
 
     # Router frame - this is where the content will be displayed

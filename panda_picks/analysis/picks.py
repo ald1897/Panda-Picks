@@ -14,6 +14,7 @@ K_PROB_SCALE = Settings.K_PROB_SCALE
 EDGE_MIN = Settings.EDGE_MIN
 MARGIN_K = Settings.MARGIN_K
 MARGIN_SD = Settings.MARGIN_SD
+MAX_PICKS_PER_WEEK = Settings.MAX_PICKS_PER_WEEK
 
 # Features expected by calibrated model
 LOGIT_FEATURES = [
@@ -320,6 +321,10 @@ def makePicks():
             results = _compute_cover_probabilities(results)
             # Sort by absolute edge descending, then Overall Advantage
             results = results.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+            # Enforce max picks per week
+            if len(results) > MAX_PICKS_PER_WEEK:
+                results = results.head(MAX_PICKS_PER_WEEK)
+                logging.info(f"Week {w}: limited to top {MAX_PICKS_PER_WEEK} picks by Pick_Edge")
             # Prepare output columns (retain backward compatibility + new metrics)
             output_cols = [
                 'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close', 'Home_Odds_Close', 'Away_Odds_Close',
@@ -385,6 +390,10 @@ def generate_week_picks(week):
             return merged
         merged = _compute_cover_probabilities(merged)
         merged = merged.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+        # Enforce max picks per week
+        if len(merged) > MAX_PICKS_PER_WEEK:
+            merged = merged.head(MAX_PICKS_PER_WEEK)
+            logger.info(f"Week {week_str}: limited to top {MAX_PICKS_PER_WEEK} picks by Pick_Edge")
         output_cols = [
             'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close', 'Home_Odds_Close', 'Away_Odds_Close',
             'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',

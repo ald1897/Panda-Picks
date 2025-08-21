@@ -39,6 +39,9 @@ class Settings:
     SIM_BASE_TOTAL: float = float(os.getenv("PP_SIM_BASE_TOTAL", 44))
     SIM_TOTAL_JITTER: float = float(os.getenv("PP_SIM_TOTAL_JITTER", 7))
 
+    # Max picks constraint
+    MAX_PICKS_PER_WEEK: int = int(os.getenv("PP_MAX_PICKS_PER_WEEK", 4))
+
     @classmethod
     def load_from_file(cls, path: Path) -> None:
         """Placeholder for future: load overrides from a file (e.g. JSON/YAML)."""
@@ -59,4 +62,3 @@ class Settings:
 # Ensure data directory exists (common expectation in code)
 Settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 (DATABASE_DIR := Settings.DATABASE_PATH.parent).mkdir(parents=True, exist_ok=True)
-
