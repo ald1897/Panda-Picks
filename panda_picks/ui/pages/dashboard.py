@@ -24,9 +24,9 @@ def register(router):
             else:
                 ui.label('No historical picks to display.').classes('q-pa-md text-grey')
         # Teaser profit chart & wins/losses remain unchanged below
-        perf_teaser = get_teaser_weekly_profit_and_balance(start_balance=1000.0, stake_per_combo=100.0, sizes=(2,3,4))
+        perf_teaser = get_teaser_weekly_profit_and_balance(start_balance=1000.0, stake_per_combo=40.0, sizes=(2,3,4))
         with ui.card().classes('w-full q-mt-lg shadow-lg'):
-            ui.label('Weekly Profit, Wagered & Rolling Balance – Teasers (2–4 leg, static odds, $100 per combo, start $1000)').classes('text-h6 q-pa-md')
+            ui.label('Weekly Profit, Wagered & Rolling Balance – Teasers (2–4 leg, static odds, $40 per combo, start $1000 Balance)').classes('text-h6 q-pa-md')
             if perf_teaser['weeks']:
                 opts_teaser = {
                     'tooltip': {'trigger': 'axis'},
