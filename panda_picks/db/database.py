@@ -52,6 +52,14 @@ def drop_tables():
     cursor = conn.cursor()
 
     # drop all tables
+    cursor.execute('DROP TABLE IF EXISTS grades')
+    cursor.execute('DROP TABLE IF EXISTS advanced_stats')
+    cursor.execute('DROP TABLE IF EXISTS spreads')
+    cursor.execute('DROP TABLE IF EXISTS picks')
+    cursor.execute('DROP TABLE IF EXISTS backtest_results')
+    cursor.execute('DROP TABLE IF EXISTS picks_results')
+    cursor.execute('DROP TABLE IF EXISTS teaser_results')
+
 
 
     conn.commit()

@@ -39,8 +39,8 @@ class Settings:
     SIM_BASE_TOTAL: float = float(os.getenv("PP_SIM_BASE_TOTAL", 44))
     SIM_TOTAL_JITTER: float = float(os.getenv("PP_SIM_TOTAL_JITTER", 7))
 
-    # Max picks constraint
-    MAX_PICKS_PER_WEEK: int = int(os.getenv("PP_MAX_PICKS_PER_WEEK", 4))
+    # Max picks constraint (default raised from 4 -> 5)
+    MAX_PICKS_PER_WEEK: int = int(os.getenv("PP_MAX_PICKS_PER_WEEK", 5))
 
     @classmethod
     def load_from_file(cls, path: Path) -> None:
