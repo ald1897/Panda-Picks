@@ -14,6 +14,38 @@ COLORS = {
 
 # --- Data Access & Computation Helpers --- #
 
+def _resolve_home_line(home_line, away_line):
+    """Return the spread line relative to the home team if available, otherwise infer from away line.
+    If both missing returns None."""
+    if home_line is not None:
+        return home_line
+    if away_line is not None:
+        return -away_line
+    return None
+
+
+def _grade_pick_row(home_team, away_team, pick_side, home_score, away_score, home_line, away_line):
+    """Determine outcome for a single pick.
+    Returns: (is_push: bool, is_win: bool or None if pending)
+    Push = (home_score + line) == away_score.
+    Win if picked side covers after excluding pushes.
+    """
+    if home_score is None or away_score is None:
+        return (False, None)
+    line = _resolve_home_line(home_line, away_line)
+    if line is None:
+        return (False, None)
+    adjusted = home_score + line
+    if adjusted == away_score:  # push
+        return (True, None)
+    home_covers = adjusted > away_score
+    if pick_side == home_team:
+        return (False, home_covers)
+    if pick_side == away_team:
+        return (False, not home_covers)
+    return (False, None)
+
+
 def get_total_picks() -> int:
     try:
         conn = get_connection()
@@ -25,20 +57,32 @@ def get_total_picks() -> int:
     except Exception:
         return 0
 
+
 def get_win_rate() -> str:
+    # Recompute dynamically ignoring pushes (do not trust Pick_Covered_Spread if pushes misclassified)
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread = 1")
-        correct = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM picks_results")
-        total = cursor.fetchone()[0]
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT Home_Team, Away_Team, Game_Pick, Home_Score, Away_Score, Home_Line_Close, Away_Line_Close
+            FROM picks_results
+            WHERE Home_Score IS NOT NULL AND Away_Score IS NOT NULL
+        """)
+        rows = cur.fetchall()
         conn.close()
-        if total > 0:
-            return f"{(correct / total) * 100:.1f}%"
-        return "0%"
+        wins = 0
+        graded = 0
+        for home, away, pick_side, hs, ascore, hline, aline in rows:
+            is_push, is_win = _grade_pick_row(home, away, pick_side, hs, ascore, hline, aline)
+            if is_win is None:  # push or pending
+                continue
+            graded += 1
+            if is_win:
+                wins += 1
+        return f"{(wins/graded)*100:.1f}%" if graded else "0%"
     except Exception:
         return "0%"
+
 
 def get_upcoming_games() -> int:
     try:
@@ -50,6 +94,7 @@ def get_upcoming_games() -> int:
         return result
     except Exception:
         return 0
+
 
 def get_recent_picks() -> List[Dict[str, Any]]:
     try:
@@ -73,27 +118,38 @@ def get_recent_picks() -> List[Dict[str, Any]]:
     except Exception:
         return []
 
+
 def calculate_win_rates() -> Dict[str, str]:
+    # Recompute home/away and overall excluding pushes
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread = 1")
-        wins = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread IS NOT NULL")
-        total = cursor.fetchone()[0]
-        overall = (wins / total) * 100 if total > 0 else 0
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread = 1 AND Game_Pick = Home_Team")
-        home_wins = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread IS NOT NULL AND Game_Pick = Home_Team")
-        home_total = cursor.fetchone()[0]
-        home = (home_wins / home_total) * 100 if home_total > 0 else 0
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread = 1 AND Game_Pick = Away_Team")
-        away_wins = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM picks_results WHERE Pick_Covered_Spread IS NOT NULL AND Game_Pick = Away_Team")
-        away_total = cursor.fetchone()[0]
-        away = (away_wins / away_total) * 100 if away_total > 0 else 0
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT WEEK, Home_Team, Away_Team, Game_Pick, Home_Score, Away_Score, Home_Line_Close, Away_Line_Close
+            FROM picks_results
+            WHERE Home_Score IS NOT NULL AND Away_Score IS NOT NULL
+        """)
+        rows = cur.fetchall()
         conn.close()
-        return {'overall': f"{overall:.1f}%", 'home': f"{home:.1f}%", 'away': f"{away:.1f}%"}
+        overall_wins = overall_total = home_wins = home_total = away_wins = away_total = 0
+        for wk, home, away, pick_side, hs, ascore, hline, aline in rows:
+            is_push, is_win = _grade_pick_row(home, away, pick_side, hs, ascore, hline, aline)
+            if is_win is None:
+                continue
+            overall_total += 1
+            if pick_side == home:
+                home_total += 1
+            elif pick_side == away:
+                away_total += 1
+            if is_win:
+                overall_wins += 1
+                if pick_side == home:
+                    home_wins += 1
+                elif pick_side == away:
+                    away_wins += 1
+        def pct(w, t):
+            return f"{(w/t)*100:.1f}%" if t else "0.0%"
+        return {'overall': pct(overall_wins, overall_total), 'home': pct(home_wins, home_total), 'away': pct(away_wins, away_total)}
     except Exception:
         return {'overall': '0.0%', 'home': '0.0%', 'away': '0.0%'}
 
@@ -289,104 +345,91 @@ def get_team_details(team_name: str):
         return {'grades': {}, 'recent_results': [], 'upcoming_schedule': [], 'ats_record': '0-0'}
 
 def get_win_rate_trend():
+    # Compute weekly win rate excluding pushes using raw scores/lines instead of Pick_Covered_Spread
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT TRIM(WEEK) as WK,
-                   SUM(CASE WHEN Pick_Covered_Spread IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
-                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) AS wins
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TRIM(WEEK) as WK, Home_Team, Away_Team, Game_Pick, Home_Score, Away_Score, Home_Line_Close, Away_Line_Close
             FROM picks_results
-            GROUP BY TRIM(WEEK)
-            HAVING total_picks > 0
+            WHERE Home_Score IS NOT NULL AND Away_Score IS NOT NULL
             ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
         """)
-        rows = cursor.fetchall()
-        if not rows:
-            cursor.execute("""
-                SELECT TRIM(p.WEEK) as WK,
-                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL THEN 1 ELSE 0 END) AS total_games,
-                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL AND 
-                                (
-                                   (p.Game_Pick = p.Home_Team AND (s.Home_Score + s.Home_Line_Close) > s.Away_Score AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score) OR
-                                   (p.Game_Pick = p.Away_Team AND NOT ((s.Home_Score + s.Home_Line_Close) > s.Away_Score) AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score)
-                                )
-                           THEN 1 ELSE 0 END) AS wins
-                FROM picks p
-                JOIN spreads s ON TRIM(p.WEEK) = TRIM(s.WEEK) AND p.Home_Team = s.Home_Team AND p.Away_Team = s.Away_Team
-                GROUP BY TRIM(p.WEEK)
-                HAVING total_games > 0
-                ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
-            """)
-            rows = cursor.fetchall()
+        rows = cur.fetchall()
         conn.close()
         if not rows:
+            # Fallback to original join logic if picks_results empty
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT TRIM(p.WEEK) as WK,
+                       p.Home_Team, p.Away_Team, p.Game_Pick,
+                       s.Home_Score, s.Away_Score, s.Home_Line_Close, s.Away_Line_Close
+                FROM picks p
+                JOIN spreads s ON TRIM(p.WEEK)=TRIM(s.WEEK) AND p.Home_Team=s.Home_Team AND p.Away_Team=s.Away_Team
+                WHERE s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL
+                ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
+            """)
+            rows = cur.fetchall()
+            conn.close()
+        if not rows:
             return {'weeks': [], 'win_rates': []}
-        weeks = []
-        win_rates = []
-        for week, total_picks, wins in rows:
-            if total_picks and total_picks > 0:
-                weeks.append(week)
-                win_rates.append(round((wins / total_picks) * 100, 1))
+        from collections import defaultdict
+        week_stats = defaultdict(lambda: {'wins': 0, 'graded': 0})
+        for wk, home, away, pick_side, hs, ascore, hline, aline in rows:
+            is_push, is_win = _grade_pick_row(home, away, pick_side, hs, ascore, hline, aline)
+            if is_win is None:
+                continue
+            week_stats[wk]['graded'] += 1
+            if is_win:
+                week_stats[wk]['wins'] += 1
+        weeks_sorted = sorted(week_stats.keys(), key=lambda w: int(str(w).upper().replace('WEEK','') or 0))
+        weeks=[]; win_rates=[]
+        for wk in weeks_sorted:
+            g = week_stats[wk]['graded']
+            if g>0:
+                weeks.append(wk)
+                win_rates.append(round((week_stats[wk]['wins']/g)*100,1))
         return {'weeks': weeks, 'win_rates': win_rates}
     except Exception:
         return {'weeks': [], 'win_rates': []}
 
 def get_weekly_win_rate_rows():
+    # Build rows with wins/losses excluding pushes
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT TRIM(WEEK) as WK,
-                   SUM(CASE WHEN Pick_Covered_Spread IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
-                   SUM(CASE WHEN Pick_Covered_Spread = 1 THEN 1 ELSE 0 END) AS wins,
-                   SUM(CASE WHEN Pick_Covered_Spread = 0 THEN 1 ELSE 0 END) AS losses
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TRIM(WEEK) as WK, Home_Team, Away_Team, Game_Pick, Home_Score, Away_Score, Home_Line_Close, Away_Line_Close
             FROM picks_results
-            GROUP BY TRIM(WEEK)
-            HAVING total_picks > 0
+            WHERE Home_Score IS NOT NULL AND Away_Score IS NOT NULL
             ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
         """)
-        rows = cursor.fetchall()
-        if not rows:
-            cursor.execute("""
-                SELECT TRIM(p.WEEK) as WK,
-                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL THEN 1 ELSE 0 END) AS total_picks,
-                       SUM(CASE WHEN s.Home_Score IS NOT NULL AND s.Away_Score IS NOT NULL AND s.Home_Line_Close IS NOT NULL AND 
-                                ( (p.Game_Pick = p.Home_Team AND (s.Home_Score + s.Home_Line_Close) > s.Away_Score AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score)
-                                  OR
-                                  (p.Game_Pick = p.Away_Team AND NOT ((s.Home_Score + s.Home_Line_Close) > s.Away_Score) AND (s.Home_Score + s.Home_Line_Close) != s.Away_Score) )
-                           THEN 1 ELSE 0 END) AS wins
-                FROM picks p
-                JOIN spreads s ON TRIM(p.WEEK)=TRIM(s.WEEK) AND p.Home_Team=s.Home_Team AND p.Away_Team=s.Away_Team
-                GROUP BY TRIM(p.WEEK)
-                HAVING total_picks > 0
-                ORDER BY CAST(REPLACE(UPPER(WK),'WEEK','') AS INTEGER)
-            """)
-            derived = cursor.fetchall()
-            conn.close()
-            data = []
-            for wk, total_picks, wins in derived:
-                number_part = wk.upper().replace('WEEK','')
-                try:
-                    num = int(number_part)
-                except ValueError:
-                    num = 0
-                padded_week = f"WEEK{num:02d}" if num else wk
-                losses = total_picks - wins if total_picks is not None else 0
-                rate = f"{(wins/total_picks)*100:.1f}%" if total_picks else '0.0%'
-                data.append({'Week': padded_week, 'Total_Picks': total_picks, 'Wins': wins, 'Losses': losses, 'Win_Rate': rate})
-            return data
+        rows = cur.fetchall()
         conn.close()
-        data = []
-        for wk, total_picks, wins, losses in rows:
+        if not rows:
+            return []
+        from collections import defaultdict
+        agg = defaultdict(lambda: {'wins':0,'losses':0})
+        for wk, home, away, pick_side, hs, ascore, hline, aline in rows:
+            is_push, is_win = _grade_pick_row(home, away, pick_side, hs, ascore, hline, aline)
+            if is_win is None:
+                continue
+            if is_win:
+                agg[wk]['wins'] += 1
+            else:
+                agg[wk]['losses'] += 1
+        data=[]
+        for wk in sorted(agg.keys(), key=lambda w: int(str(w).upper().replace('WEEK','') or 0)):
+            wins=agg[wk]['wins']; losses=agg[wk]['losses']; total=wins+losses
             number_part = wk.upper().replace('WEEK','')
             try:
                 num = int(number_part)
             except ValueError:
                 num = 0
             padded_week = f"WEEK{num:02d}" if num else wk
-            rate = f"{(wins/total_picks)*100:.1f}%" if total_picks else '0.0%'
-            data.append({'Week': padded_week, 'Total_Picks': total_picks, 'Wins': wins, 'Losses': losses, 'Win_Rate': rate})
+            rate = f"{(wins/total)*100:.1f}%" if total else '0.0%'
+            data.append({'Week': padded_week, 'Total_Picks': total, 'Wins': wins, 'Losses': losses, 'Win_Rate': rate})
         return data
     except Exception:
         return []

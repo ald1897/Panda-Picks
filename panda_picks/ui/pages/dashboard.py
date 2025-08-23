@@ -21,17 +21,17 @@ def register(router):
                     ui.icon('event').classes('text-h2 q-mb-md')
                     ui.label('Upcoming Games').classes('text-h6')
                     ui.label(str(get_upcoming_games())).classes('text-h3')
-        # Weekly Win Rate Trend chart
+        # Weekly Win Rate Trend chart (ATS results excluding pushes)
         trend = get_win_rate_trend()
         with ui.card().classes('w-full q-mt-lg shadow-lg'):
-            ui.label('Weekly Win Rate Trend').classes('text-h6 q-pa-md')
+            ui.label('Weekly ATS Win Rate Trend (pushes excluded)').classes('text-h6 q-pa-md')
             if trend['weeks']:
                 opts = {
                     'tooltip': {'trigger': 'axis'},
                     'xAxis': {'type': 'category', 'data': trend['weeks']},
                     'yAxis': {'type': 'value', 'min': 0, 'max': 100, 'axisLabel': {'formatter': '{value}%'}},
                     'series': [{
-                        'name': 'Win Rate', 'type': 'line', 'data': trend['win_rates'],
+                        'name': 'ATS Win Rate', 'type': 'line', 'data': trend['win_rates'],
                         'smooth': True, 'lineStyle': {'width': 3, 'color': COLORS['primary']},
                         'areaStyle': {'color': 'rgba(72,135,43,0.15)'}
                     }]
@@ -85,44 +85,6 @@ def register(router):
                     ]
                 }
                 ui.echart(options=opts_teaser).classes('w-full').style('height:360px;')
-                # Teaser combo summary table
-                detail = perf_teaser.get('detail', {})
-                summary_rows = []
-                start_bankroll = 1000.0
-                for idx, wk in enumerate(perf_teaser['weeks']):
-                    wk_detail = detail.get(wk, {})
-                    summ = wk_detail.get('summary', {})
-                    weekly_profit = perf_teaser['weekly_profit'][idx]
-                    rolling_balance = perf_teaser['rolling_balance'][idx]
-                    weekly_return_pct = (weekly_profit / start_bankroll * 100.0) if start_bankroll else 0.0
-                    amount_wagered = perf_teaser.get('weekly_wagered', [])[idx] if perf_teaser.get('weekly_wagered') else 0.0
-                    summary_rows.append({
-                        'Week': wk,
-                        'Winning_Legs': summ.get('winning_legs',''),
-                        'Total_Legs': summ.get('legs',''),
-                        'Winning_Combos': summ.get('winning_combos',''),
-                        'Total_Combos': summ.get('total_combos',''),
-                        'Combo_Win_Ratio': summ.get('win_ratio',''),
-                        'Amount_Wagered': f"${amount_wagered:,.2f}",
-                        'Weekly_Profit': f"${weekly_profit:,.2f}",
-                        'Rolling_Balance': f"${rolling_balance:,.2f}",
-                        'Return_Percent': f"{weekly_return_pct:.2f}%"
-                    })
-                if summary_rows:
-                    ui.label('Teaser Leg / Combo Summary').classes('text-subtitle2 q-mt-md q-mb-sm')
-                    columns_summary = [
-                        {'name': 'Week', 'label': 'Week', 'field': 'Week'},
-                        {'name': 'Winning_Legs', 'label': 'Winning Legs', 'field': 'Winning_Legs'},
-                        {'name': 'Total_Legs', 'label': 'Total Legs', 'field': 'Total_Legs'},
-                        {'name': 'Winning_Combos', 'label': 'Winning Combos', 'field': 'Winning_Combos'},
-                        {'name': 'Total_Combos', 'label': 'Total Combos', 'field': 'Total_Combos'},
-                        {'name': 'Combo_Win_Ratio', 'label': 'Combo Win Ratio', 'field': 'Combo_Win_Ratio'},
-                        {'name': 'Amount_Wagered', 'label': 'Amount Wagered', 'field': 'Amount_Wagered'},
-                        {'name': 'Weekly_Profit', 'label': 'Weekly Profit', 'field': 'Weekly_Profit'},
-                        {'name': 'Rolling_Balance', 'label': 'Rolling Balance', 'field': 'Rolling_Balance'},
-                        {'name': 'Return_Percent', 'label': 'Return % (of $1000)', 'field': 'Return_Percent'},
-                    ]
-                    ui.table(columns=columns_summary, rows=summary_rows, row_key='Week').props('dense bordered').classes('w-full q-mb-md')
             else:
                 ui.label('No completed teaser results to compute profit.').classes('q-pa-md text-grey')
     return dashboard
