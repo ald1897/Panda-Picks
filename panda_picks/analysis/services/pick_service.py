@@ -9,6 +9,33 @@ from panda_picks.analysis.utils.probability import calculate_win_probability
 from panda_picks.analysis.picks import ADVANTAGE_BASE_COLUMNS  # reuse existing logic for now
 
 
+def _american_to_decimal(odds):
+    try:
+        odds = float(odds)
+    except (TypeError, ValueError):
+        return np.nan
+    if odds > 0:
+        return 1 + odds / 100.0
+    return 1 + 100.0 / abs(odds)
+
+
+def _implied_probs(home_odds, away_odds):
+    home_dec = _american_to_decimal(home_odds)
+    away_dec = _american_to_decimal(away_odds)
+    if np.isnan(home_dec) and np.isnan(away_dec):
+        return (np.nan, np.nan)
+    raw_home = (1 / home_dec) if not np.isnan(home_dec) else np.nan
+    raw_away = (1 / away_dec) if not np.isnan(away_dec) else np.nan
+    if np.isnan(raw_home) and not np.isnan(raw_away):
+        return (1 - raw_away, raw_away)
+    if np.isnan(raw_away) and not np.isnan(raw_home):
+        return (raw_home, 1 - raw_home)
+    total = raw_home + raw_away
+    if total == 0:
+        return (np.nan, np.nan)
+    return (raw_home / total, raw_away / total)
+
+
 class PickService:
     """Service layer for generating picks. Bridges old logic and new architecture."""
 
@@ -54,8 +81,23 @@ class PickService:
 
         merged['Game_Pick'] = merged.apply(decide, axis=1)
         picks_df = merged[merged['Game_Pick'] != 'No Pick'].copy()
+        if picks_df.empty:
+            return picks_df
+
+        # Implied probabilities and edge
+        picks_df['Home_ML_Implied'], picks_df['Away_ML_Implied'] = zip(*picks_df.apply(lambda r: _implied_probs(r.get('Home_Odds_Close'), r.get('Away_Odds_Close')), axis=1))
+        picks_df['Pick_Prob'] = picks_df.apply(lambda r: r['Home_Win_Prob'] if r['Game_Pick'] == r['Home_Team'] else (r['Away_Win_Prob'] if r['Game_Pick'] == r['Away_Team'] else np.nan), axis=1)
+        picks_df['Pick_Implied_Prob'] = picks_df.apply(lambda r: r['Home_ML_Implied'] if r['Game_Pick'] == r['Home_Team'] else (r['Away_ML_Implied'] if r['Game_Pick'] == r['Away_Team'] else np.nan), axis=1)
+        picks_df['Pick_Edge'] = picks_df['Pick_Prob'] - picks_df['Pick_Implied_Prob']
+        # Edge filter
+        before = len(picks_df)
+        picks_df = picks_df[picks_df['Pick_Edge'].abs() >= self.settings.EDGE_MIN]
+        # Sort by strongest edge then overall advantage
+        picks_df = picks_df.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+        # Enforce max picks per week
+        if len(picks_df) > self.settings.MAX_PICKS_PER_WEEK:
+            picks_df = picks_df.head(self.settings.MAX_PICKS_PER_WEEK)
         picks_df['Timestamp'] = datetime.utcnow().isoformat()
         if not picks_df.empty:
             self.pick_repo.save_picks(picks_df, week)
         return picks_df
-

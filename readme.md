@@ -245,3 +245,8 @@ Contributions welcome: open issues for feature ideas; submit PRs with tests.
 
 ---
 Happy building – extend responsibly, measure calibration, and iterate.
+
+## 18. API Endpoints for Matchup Data
+- Hit https://premium.pff.com/api/v1/games?league=nfl&season=2025&week=1 for matchup IDs
+- Hit https://www.pff.com/api/scoreboard/matchup?league=nfl&season=2025&week=1&game=dallas-cowboys_at_philadelphia-eagles_28418 for matchup data
+- Use that data to enhance picking logic and accuracy
