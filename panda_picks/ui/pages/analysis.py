@@ -27,6 +27,39 @@ def register(router):
                     matchup_select.options = [m['Label'] for m in m_list]
                     matchup_select.value = m_list[0]['Label'] if m_list else None
                     update_comparison()
+                def compute_adv(home_gr, away_gr, col):
+                    try:
+                        if not home_gr or not away_gr:
+                            return None
+                        if col == 'Overall_Adv':
+                            return (home_gr.get('OVR') - away_gr.get('OVR')) if home_gr.get('OVR') is not None and away_gr.get('OVR') is not None else None
+                        if col == 'Offense_Adv':
+                            return (home_gr.get('OFF') - away_gr.get('DEF')) if home_gr.get('OFF') is not None and away_gr.get('DEF') is not None else None
+                        if col == 'Defense_Adv':
+                            return (home_gr.get('DEF') - away_gr.get('OFF')) if home_gr.get('DEF') is not None and away_gr.get('OFF') is not None else None
+                        if col == 'Off_Comp_Adv':
+                            # Composite offense vs composite defense (fallback heuristic)
+                            offensive_parts = [home_gr.get(k) for k in ['OFF','PASS','RUN','RECV','PBLK','RBLK'] if home_gr.get(k) is not None]
+                            defensive_parts = [away_gr.get(k) for k in ['DEF','COV','RDEF','PRSH','TACK'] if away_gr.get(k) is not None]
+                            if offensive_parts and defensive_parts:
+                                return (sum(offensive_parts)/len(offensive_parts)) - (sum(defensive_parts)/len(defensive_parts))
+                            return None
+                        if col == 'Def_Comp_Adv':
+                            defensive_parts_home = [home_gr.get(k) for k in ['DEF','COV','RDEF','PRSH','TACK'] if home_gr.get(k) is not None]
+                            offensive_parts_away = [away_gr.get(k) for k in ['OFF','PASS','RUN','RECV','PBLK','RBLK'] if away_gr.get(k) is not None]
+                            if defensive_parts_home and offensive_parts_away:
+                                return (sum(defensive_parts_home)/len(defensive_parts_home)) - (sum(offensive_parts_away)/len(offensive_parts_away))
+                            return None
+                    except Exception:
+                        return None
+                    return None
+                advantage_columns = [
+                    ('Overall_Adv','Overall Advantage'),
+                    ('Offense_Adv','Offense Advantage'),
+                    ('Defense_Adv','Defense Advantage'),
+                    ('Off_Comp_Adv','Off Comp Adv'),
+                    ('Def_Comp_Adv','Def Comp Adv'),
+                ]
                 def update_comparison():
                     comparison_container.clear()
                     label = matchup_select.value
@@ -43,17 +76,12 @@ def register(router):
                     home_gr = details['home_grades']
                     away_gr = details['away_grades']
                     adv_metrics = []
-                    if pick:
-                        for adv_col,label_txt in [
-                            ('Overall_Adv','Overall Advantage'),
-                            ('Offense_Adv','Offense Advantage'),
-                            ('Defense_Adv','Defense Advantage'),
-                            ('Off_Comp_Adv','Off Comp Adv'),
-                            ('Def_Comp_Adv','Def Comp Adv'),
-                        ]:
-                            val = pick.get(adv_col)
-                            if isinstance(val,(int,float)):
-                                adv_metrics.append({'label':label_txt,'value':val})
+                    for adv_col,label_txt in advantage_columns:
+                        val = pick.get(adv_col) if pick else None
+                        if not isinstance(val,(int,float)):
+                            val = compute_adv(home_gr, away_gr, adv_col)
+                        if isinstance(val,(int,float)):
+                            adv_metrics.append({'label':label_txt,'value':val})
                     with comparison_container:
                         with ui.row().classes('items-center justify-between w-full'):
                             ui.label(f"{away} @ {home}").classes('text-h6')
@@ -68,11 +96,17 @@ def register(router):
                                 ao = spread.get('Away_Odds_Close')
                                 if ho is not None and ao is not None:
                                     odds_txt = f"Odds (H/A): {ho} / {ao}"
-                            edge_txt = ''
-                            if pick and isinstance(pick.get('Overall_Adv'), (int,float)):
-                                edge_val = pick.get('Overall_Adv')
-                                edge_txt = f"Overall Adv: {edge_val:+.2f}" if edge_val is not None else ''
-                            ui.label(' | '.join([t for t in [line_txt, odds_txt, edge_txt] if t])).classes('text-caption text-grey')
+                            adv_txt = ''
+                            if adv_metrics:
+                                # show overall adv (home perspective) first metric
+                                ov = next((m['value'] for m in adv_metrics if m['label'].startswith('Overall')), None)
+                                if isinstance(ov,(int,float)):
+                                    adv_txt = f"Overall Adv: {ov:+.2f}"
+                            pick_edge_txt = ''
+                            if pick and isinstance(pick.get('Pick_Edge'), (int,float)):
+                                pick_edge_txt = f"Pick Edge: {pick.get('Pick_Edge'):+.3f}"
+                            header_parts = [t for t in [line_txt, odds_txt, adv_txt, pick_edge_txt] if t]
+                            ui.label(' | '.join(header_parts)).classes('text-caption text-grey')
                         if adv_metrics:
                             max_abs = max(abs(m['value']) for m in adv_metrics) or 1
                             with ui.column().classes('w-full q-mt-xs'):
