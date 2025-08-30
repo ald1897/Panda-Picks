@@ -5,6 +5,15 @@
 # Ignore the .idea folder
 .idea/
 
+# Added: local sqlite databases & temp artifacts
+*.db
+*.db-shm
+*.db-wal
+database/*.db
+panda_picks/*.db
+temp_test_matchup_details*.db
+panda_picks/ui/pages/manual_combo_overrides.json
+
 # Default ignored files
 /shelf/
 /.idea/workspace.xml
