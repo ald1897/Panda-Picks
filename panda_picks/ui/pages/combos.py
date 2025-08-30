@@ -11,14 +11,15 @@ def register(router):
         with ui.card().classes('w-full shadow-lg q-pa-md'):
             with ui.row().classes('items-center q-col-gutter-md'):
                 week_select = ui.select([f"WEEK{i}" for i in range(1,19)], value='WEEK1', label='Select Week').classes('w-1/6')
-                size_multiselect = ui.select(['2','3','4'], value=['2','3','4'], label='Sizes', multiple=True).classes('w-1/6')
+                size_multiselect = ui.select(['2','3','4','5'], value=['2','3','4','5'], label='Sizes', multiple=True).classes('w-1/6')
                 stake_input = ui.number(label='Stake per Combo', value=100, format='%.0f').classes('w-1/6')
                 ui.button('Refresh', icon='refresh', on_click=lambda: update_table()).classes('q-ml-md')
                 export_btn = ui.button('Export CSV', icon='download').props('outline')
         summary_card = ui.card().classes('w-full shadow-sm q-pa-md')
         table_container = ui.element('div').classes('w-full')
 
-        TEASER_STATIC_AMERICAN = {2: -135, 3: 140, 4: 240}
+        # Added 5-leg static odds (+333)
+        TEASER_STATIC_AMERICAN = {2: -135, 3: 140, 4: 240, 5: 333}
 
         def format_american(val):
             try:
@@ -75,7 +76,7 @@ def register(router):
                     ui.label('Not enough picks for combinations (need at least 2).').classes('q-pa-md')
                 return
             picks_df = pd.DataFrame(raw_picks)
-            combos = generate_bet_combinations(picks_df, 2, 4)
+            combos = generate_bet_combinations(picks_df, 2, 5)
             selected_sizes = set(int(s) for s in (size_multiselect.value or []))
             combos = [c for c in combos if c['Size'] in selected_sizes]
             if not combos:
@@ -101,7 +102,6 @@ def register(router):
                     profit = teaser_profit_from_american(am_odds, stake)
                 else:
                     am_odds = c.get('Book_American_Odds')
-                    # profit from decimal odds: profit = stake*(dec-1)
                     dec = c.get('Book_Dec_Odds')
                     profit = stake * (dec - 1) if isinstance(dec,(int,float)) and not math.isnan(dec or math.nan) else math.nan
                 rows.append({

@@ -49,7 +49,7 @@ def _extract_pick_decimal_odds(row: pd.Series) -> float:
     return math.nan
 
 
-def generate_bet_combinations(picks_df: pd.DataFrame, min_size: int = 2, max_size: int = 4) -> List[Dict[str, Any]]:
+def generate_bet_combinations(picks_df: pd.DataFrame, min_size: int = 2, max_size: int = 5) -> List[Dict[str, Any]]:
     """Generate all parlay combinations between min_size and max_size from picks_df.
 
     Returns list of dicts with keys:
