@@ -72,7 +72,8 @@ class TestPickLimit(unittest.TestCase):
         except Exception:
             pass
 
-    def test_max_five_picks_enforced(self):
+    def test_max_pick_limit_enforced(self):
+        """Ensure generated picks never exceed Settings.MAX_PICKS_PER_WEEK."""
         service = PickService()
         df = service.generate_picks_for_week(1)
         # There are 8 potential picks, verify capped at MAX_PICKS_PER_WEEK
@@ -81,11 +82,10 @@ class TestPickLimit(unittest.TestCase):
         # Ensure sorted by Pick_Edge descending
         edges = df['Pick_Edge'].tolist()
         self.assertEqual(edges, sorted(edges, reverse=True))
-        # Check picks table persisted count also <= 5
+        # Check picks table persisted count also <= limit
         with get_connection() as conn:
             picks_in_db = pd.read_sql_query("SELECT * FROM picks WHERE WEEK='WEEK1'", conn)
         self.assertLessEqual(len(picks_in_db), Settings.MAX_PICKS_PER_WEEK)
 
 if __name__ == '__main__':
     unittest.main()
-

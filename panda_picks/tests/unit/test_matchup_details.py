@@ -1,18 +1,14 @@
 import unittest
 from pathlib import Path
+from uuid import uuid4
 from panda_picks import config
 from panda_picks.db.database import create_tables, get_connection
 from panda_picks.ui.data import get_available_weeks, get_week_matchups, get_matchup_details
 
 class TestMatchupDetails(unittest.TestCase):
     def setUp(self):
-        # isolated temp db
-        self.db_path = Path('temp_test_matchup_details.db').resolve()
-        if self.db_path.exists():
-            try:
-                self.db_path.unlink()
-            except Exception:
-                pass
+        # isolated temp db (unique per test to avoid locking / leftover data)
+        self.db_path = Path(f'temp_test_matchup_details_{uuid4().hex}.db').resolve()
         config.DATABASE_PATH = self.db_path
         create_tables()
         # Insert grades
@@ -61,4 +57,3 @@ class TestMatchupDetails(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
