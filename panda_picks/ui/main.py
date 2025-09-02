@@ -15,11 +15,7 @@ if __package__ is None or __package__ == '':
     from panda_picks.ui.pages import dashboard as dashboard_page  # type: ignore
     from panda_picks.ui.pages import analysis as analysis_page  # type: ignore
     from panda_picks.ui.pages import picks as picks_page  # type: ignore
-    from panda_picks.ui.pages import grades as grades_page  # type: ignore
-    from panda_picks.ui.pages import spreads as spreads_page  # type: ignore
     from panda_picks.ui.pages import settings as settings_page  # type: ignore
-    from panda_picks.ui.pages import backtest as backtest_page  # type: ignore
-    from panda_picks.ui.pages import team_details as team_details_page  # type: ignore
     from panda_picks.ui.pages import combos as combos_page  # type: ignore
 else:
     from .router import Router
@@ -29,11 +25,7 @@ else:
     from .pages import dashboard as dashboard_page
     from .pages import analysis as analysis_page
     from .pages import picks as picks_page
-    from .pages import grades as grades_page
-    from .pages import spreads as spreads_page
     from .pages import settings as settings_page
-    from .pages import backtest as backtest_page
-    from .pages import team_details as team_details_page
     from .pages import combos as combos_page
 
 # When running as script, nicegui still needed (import after path setup)
@@ -74,11 +66,7 @@ def main():
     dashboard = dashboard_page.register(router)
     analysis = analysis_page.register(router)
     picks = picks_page.register(router)
-    grades = grades_page.register(router)
-    spreads = spreads_page.register(router)
     settings = settings_page.register(router)
-    backtest = backtest_page.register(router)
-    team_details = team_details_page.register(router)
     combos = combos_page.register(router)
 
     # Navigation bar
@@ -87,10 +75,6 @@ def main():
         ui.button('Dashboard', on_click=lambda: router.open(dashboard), icon='dashboard').classes('q-mr-sm')
         ui.button('Analysis', on_click=lambda: router.open(analysis), icon='bar_chart').classes('q-mr-sm')
         ui.button('Picks', on_click=lambda: router.open(picks), icon='style').classes('q-mr-sm')
-        ui.button('Grades', on_click=lambda: router.open(grades), icon='grade').classes('q-mr-sm')
-        ui.button('Spreads', on_click=lambda: router.open(spreads), icon='timeline').classes('q-mr-sm')
-        ui.button('Backtest', on_click=lambda: router.open(backtest), icon='science').classes('q-mr-sm')
-        ui.button('Teams', on_click=lambda: router.open(team_details), icon='groups').classes('q-mr-sm')
         ui.button('Combos', on_click=lambda: router.open(combos), icon='functions').classes('q-mr-sm')
         ui.button('Settings', on_click=lambda: router.open(settings), icon='settings')
 

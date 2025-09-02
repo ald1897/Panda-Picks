@@ -11,15 +11,17 @@ def register(router):
         with ui.card().classes('w-full shadow-lg q-pa-md'):
             with ui.row().classes('items-center q-col-gutter-md'):
                 week_select = ui.select([f"WEEK{i}" for i in range(1,19)], value='WEEK1', label='Select Week').classes('w-1/6')
-                size_multiselect = ui.select(['2','3','4','5'], value=['2','3','4','5'], label='Sizes', multiple=True).classes('w-1/6')
+                size_multiselect = ui.select(['2','3','4','5','6','7','8'], value=['2','3','4','5','6','7','8'], label='Sizes', multiple=True).classes('w-1/6')
+                # Exclude teams control allows manually removing picks for the selected week
+                exclude_select = ui.select([], value=[], label='Exclude Teams', multiple=True).classes('w-1/6')
                 stake_input = ui.number(label='Stake per Combo', value=100, format='%.0f').classes('w-1/6')
                 ui.button('Refresh', icon='refresh', on_click=lambda: update_table()).classes('q-ml-md')
                 export_btn = ui.button('Export CSV', icon='download').props('outline')
         summary_card = ui.card().classes('w-full shadow-sm q-pa-md')
         table_container = ui.element('div').classes('w-full')
 
-        # Added 5-leg static odds (+333)
-        TEASER_STATIC_AMERICAN = {2: -135, 3: 140, 4: 240, 5: 333}
+        # Added static teaser odds (2-8 legs)
+        TEASER_STATIC_AMERICAN = {2: -135, 3: 140, 4: 240, 5: 333, 6: 500, 7: 700, 8: 1100}
 
         def format_american(val):
             try:
@@ -70,13 +72,37 @@ def register(router):
             summary_rows = []
             table_container.clear()
             raw_picks = get_week_picks_for_combos(week_select.value)
+            # Populate exclude_select options based on available picks for the week
+            try:
+                available_teams = sorted({r.get('Game_Pick') for r in raw_picks if r.get('Game_Pick')})
+            except Exception:
+                available_teams = []
+            # keep previously selected exclusions if still valid
+            cur_exclusions = [t for t in (exclude_select.value or []) if t in available_teams]
+            exclude_select.options = available_teams
+            exclude_select.value = cur_exclusions
+
             if not raw_picks or len(raw_picks) < 2:
                 update_summary([], stake)
                 with table_container:
                     ui.label('Not enough picks for combinations (need at least 2).').classes('q-pa-md')
                 return
             picks_df = pd.DataFrame(raw_picks)
-            combos = generate_bet_combinations(picks_df, 2, 5)
+
+            # Apply manual exclusions: remove any picks where the selected team was excluded
+            excluded_set = set(exclude_select.value or [])
+            if excluded_set:
+                picks_df = picks_df[~picks_df['Game_Pick'].isin(excluded_set)].reset_index(drop=True)
+
+            if picks_df is None or picks_df.empty or len(picks_df) < 2:
+                # Not enough picks after exclusions
+                update_summary([], stake)
+                with table_container:
+                    ui.label('Not enough picks for combinations after exclusions.').classes('q-pa-md')
+                return
+
+            # generate combos up to 8 legs (previously limited to 5)
+            combos = generate_bet_combinations(picks_df, 2, 8)
             selected_sizes = set(int(s) for s in (size_multiselect.value or []))
             combos = [c for c in combos if c['Size'] in selected_sizes]
             if not combos:
@@ -141,4 +167,6 @@ def register(router):
         week_select.on('update:model-value', lambda e: update_table())
         size_multiselect.on('update:model-value', lambda e: update_table())
         stake_input.on('update:model-value', lambda e: update_table())
+        # Refresh table when excluded teams are changed
+        exclude_select.on('update:model-value', lambda e: update_table())
     return combos_page

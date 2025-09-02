@@ -108,15 +108,52 @@ def register(router):
                             header_parts = [t for t in [line_txt, odds_txt, adv_txt, pick_edge_txt] if t]
                             ui.label(' | '.join(header_parts)).classes('text-caption text-grey')
                         if adv_metrics:
-                            max_abs = max(abs(m['value']) for m in adv_metrics) or 1
-                            with ui.column().classes('w-full q-mt-xs'):
-                                for m in adv_metrics:
-                                    pct = (abs(m['value'])/max_abs)
-                                    with ui.row().classes('items-center w-full'):
-                                        ui.label(m['label']).classes('text-caption w-1/4')
-                                        color = 'green' if m['value'] > 0 else 'red'
-                                        ui.linear_progress(value=pct, show_value=False).props(f'color={color}').classes('w-2/4')
-                                        ui.label(f"{m['value']:+.2f}").classes('text-caption w-1/4 text-right')
+                            # Prepare labels and numeric values
+                            labels = [m['label'] for m in adv_metrics]
+                            values = [float(m['value']) for m in adv_metrics]
+                            # choose colors for positive/negative values
+                            bar_colors = [COLORS['primary'] if v > 0 else '#f44336' for v in values]
+
+                            # 1) Render polished HTML bars (default and always visible)
+                            max_abs = max(abs(v) for v in values) if values else 1.0
+                            html_rows = ['<div style="display:flex;flex-direction:column;gap:8px;padding:6px 0;">']
+                            for lbl, val, col in zip(labels, values, bar_colors):
+                                pct = (abs(val) / max_abs) if max_abs else 0
+                                bar_width = int(60 + pct * 340)
+                                # darker border for better contrast
+                                html_rows.append(
+                                    "<div style='display:flex;align-items:center;gap:12px;'>"
+                                    f"<div style='width:160px;font-size:13px;color:#333;'>{lbl}</div>"
+                                    f"<div style='flex:0 0 {bar_width}px;height:20px;border-radius:6px;background:{col};box-shadow:inset 0 -2px 0 rgba(0,0,0,0.12);'></div>"
+                                    f"<div style='width:90px;text-align:right;font-size:13px;color:#222'>{val:+.2f}</div>"
+                                    "</div>"
+                                )
+                            html_rows.append('</div>')
+                            ui.html(''.join(html_rows)).classes('w-full q-mb-sm')
+
+                            # 2) Interactive Plotly horizontal bar chart (uses same data)
+                            try:
+                                import plotly.graph_objects as go
+                                # compute reasonable height
+                                height_px = max(180, 60 + 40 * len(labels))
+                                fig = go.Figure()
+                                fig.add_trace(go.Bar(
+                                    x=values,
+                                    y=labels,
+                                    orientation='h',
+                                    marker=dict(color=bar_colors, line=dict(color='rgba(0,0,0,0.06)', width=1)),
+                                    hovertemplate='%{y}: %{x:.2f}<extra></extra>'
+                                ))
+                                fig.update_layout(
+                                    xaxis_title='Advantage (home perspective)',
+                                    margin=dict(l=140, r=20, t=8, b=20),
+                                    height=height_px,
+                                    template='simple_white'
+                                )
+                                ui.plotly(fig).classes('w-full')
+                            except Exception:
+                                # If plotly isn't available for some reason, keep only the HTML bars (which are already shown)
+                                pass
                         with ui.row().classes('w-full q-col-gutter-md'):
                             with ui.card().classes('w-1/2 shadow'):
                                 ui.label(f"Home: {home}").classes('text-subtitle1 q-mb-xs')
