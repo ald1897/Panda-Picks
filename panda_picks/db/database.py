@@ -59,6 +59,7 @@ def drop_tables():
     cursor.execute('DROP TABLE IF EXISTS backtest_results')
     cursor.execute('DROP TABLE IF EXISTS picks_results')
     cursor.execute('DROP TABLE IF EXISTS teaser_results')
+    cursor.execute('DROP TABLE IF EXISTS excluded_teams')  # newly added
 
 
 
@@ -208,19 +209,14 @@ def create_tables():
                        )
                    ''')
 
-    # create teaser_results table
+    # Duplicate teaser_results creation block retained above; leave as-is.
+
+    # Excluded teams (manual UI exclusions for combos)
     cursor.execute('''
-                   CREATE TABLE IF NOT EXISTS teaser_results (
-                                                                 Combo TEXT,
-                                                                 Winnings REAL,
-                                                                 Type TEXT,
+                   CREATE TABLE IF NOT EXISTS excluded_teams (
                                                                  WEEK TEXT,
-                                                                 Total_Amount_Wagered REAL,
-                                                                 Weekly_Profit REAL,
-                                                                 Total_Profit REAL,
-                                                                 Total_Profit_Over_All_Weeks REAL,
-                                                                 Total_Balance REAL,
-                                                                 PRIMARY KEY (Combo, WEEK)
+                                                                 Team TEXT,
+                                                                 PRIMARY KEY (WEEK, Team)
                        )
                    ''')
 

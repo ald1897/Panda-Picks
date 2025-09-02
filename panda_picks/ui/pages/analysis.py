@@ -57,8 +57,8 @@ def register(router):
                     ('Overall_Adv','Overall Advantage'),
                     ('Offense_Adv','Offense Advantage'),
                     ('Defense_Adv','Defense Advantage'),
-                    ('Off_Comp_Adv','Off Comp Adv'),
-                    ('Def_Comp_Adv','Def Comp Adv'),
+                    ('Off_Comp_Adv','O Composite Advantage'),
+                    ('Def_Comp_Adv','D Composite Advantage'),
                 ]
                 def update_comparison():
                     comparison_container.clear()
@@ -131,45 +131,11 @@ def register(router):
                             html_rows.append('</div>')
                             ui.html(''.join(html_rows)).classes('w-full q-mb-sm')
 
-                            # 2) Interactive Plotly horizontal bar chart (uses same data)
-                            try:
-                                import plotly.graph_objects as go
-                                # compute reasonable height
-                                height_px = max(180, 60 + 40 * len(labels))
-                                fig = go.Figure()
-                                fig.add_trace(go.Bar(
-                                    x=values,
-                                    y=labels,
-                                    orientation='h',
-                                    marker=dict(color=bar_colors, line=dict(color='rgba(0,0,0,0.06)', width=1)),
-                                    hovertemplate='%{y}: %{x:.2f}<extra></extra>'
-                                ))
-                                fig.update_layout(
-                                    xaxis_title='Advantage (home perspective)',
-                                    margin=dict(l=140, r=20, t=8, b=20),
-                                    height=height_px,
-                                    template='simple_white'
-                                )
-                                ui.plotly(fig).classes('w-full')
-                            except Exception:
-                                # If plotly isn't available for some reason, keep only the HTML bars (which are already shown)
-                                pass
                         with ui.row().classes('w-full q-col-gutter-md'):
                             with ui.card().classes('w-1/2 shadow'):
-                                ui.label(f"Home: {home}").classes('text-subtitle1 q-mb-xs')
-                                with ui.row().classes('text-caption wrap'):
-                                    for m in metrics:
-                                        if m in home_gr:
-                                            ui.label(f"{m}: {fmt(home_gr.get(m))}").classes('q-mr-md q-mb-xs')
                                 if pick and pick.get('Game_Pick') == home:
                                     ui.badge('Model Pick', color='green').classes('q-mt-sm')
-                            with ui.card().classes('w-1/2 shadow'):
-                                ui.label(f"Away: {away}").classes('text-subtitle1 q-mb-xs')
-                                with ui.row().classes('text-caption wrap'):
-                                    for m in metrics:
-                                        if m in away_gr:
-                                            ui.label(f"{m}: {fmt(away_gr.get(m))}").classes('q-mr-md q-mb-xs')
-                                if pick and pick.get('Game_Pick') == away:
+                                elif pick and pick.get('Game_Pick') == away:
                                     ui.badge('Model Pick', color='green').classes('q-mt-sm')
                         rows = []
                         for m in metrics:

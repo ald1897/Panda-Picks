@@ -3,10 +3,13 @@ import math
 import pandas as pd
 from ..data import get_week_picks_for_combos
 from panda_picks.analysis.utils.combos import generate_bet_combinations
+from panda_picks.data.repositories.excluded_teams_repository import ExcludedTeamsRepository
 
 def register(router):
     @router.add('/combos')
     def combos_page():
+        repo = ExcludedTeamsRepository()
+        _suppress_exclusion_event = {'flag': False}
         ui.label('Bet Combinations (Parlays)').classes('text-h4 q-mb-md')
         with ui.card().classes('w-full shadow-lg q-pa-md'):
             with ui.row().classes('items-center q-col-gutter-md'):
@@ -71,16 +74,22 @@ def register(router):
             stake = float(stake_input.value or 0)
             summary_rows = []
             table_container.clear()
-            raw_picks = get_week_picks_for_combos(week_select.value)
+            week_key = week_select.value
+            raw_picks = get_week_picks_for_combos(week_key)
             # Populate exclude_select options based on available picks for the week
             try:
                 available_teams = sorted({r.get('Game_Pick') for r in raw_picks if r.get('Game_Pick')})
             except Exception:
                 available_teams = []
-            # keep previously selected exclusions if still valid
-            cur_exclusions = [t for t in (exclude_select.value or []) if t in available_teams]
+            # Load persisted exclusions and filter to available teams
+            saved = repo.get_exclusions(week_key)
+            cur_exclusions = [t for t in saved if t in available_teams]
             exclude_select.options = available_teams
-            exclude_select.value = cur_exclusions
+            _suppress_exclusion_event['flag'] = True
+            try:
+                exclude_select.value = cur_exclusions
+            finally:
+                _suppress_exclusion_event['flag'] = False
 
             if not raw_picks or len(raw_picks) < 2:
                 update_summary([], stake)
@@ -167,6 +176,11 @@ def register(router):
         week_select.on('update:model-value', lambda e: update_table())
         size_multiselect.on('update:model-value', lambda e: update_table())
         stake_input.on('update:model-value', lambda e: update_table())
-        # Refresh table when excluded teams are changed
-        exclude_select.on('update:model-value', lambda e: update_table())
+        # Persist exclusions then refresh
+        def on_exclusions_change(_):
+            if _suppress_exclusion_event['flag']:
+                return
+            repo.set_exclusions(week_select.value, exclude_select.value or [])
+            update_table()
+        exclude_select.on('update:model-value', on_exclusions_change)
     return combos_page
