@@ -1,8 +1,15 @@
 from pathlib import Path
 from .settings import Settings
+# Load .env variables at import time using python-dotenv without overriding existing environment variables.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# Load environment variables from .env if present (non-destructive)
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv(PROJECT_ROOT / '.env', override=False)
+except Exception:
+    pass
 
 # Backward-compatible constants originally defined in module config.py
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 GRADES_DIR = DATA_DIR / "grades"
 MATCHUPS_DIR = DATA_DIR / "matchups"
