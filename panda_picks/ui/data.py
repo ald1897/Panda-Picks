@@ -6,14 +6,14 @@ from .week_utils import week_sort_key, format_week_standard, extract_week_number
 from panda_picks.data.repositories.pick_results_repository import PickResultsRepository
 from .pick_enricher import PickEnricher
 
-# Centralized color palette
+# Centralized color palette (updated to match branding banner)
 COLORS = {
-    'primary': '#48872B',    # Kelly Green
-    'secondary': '#ff9800',  # Orange
-    'accent': '#3f51b5',     # Deep blue (old primary)
-    'card1': '#5DE224',      # Light Green
-    'card2': '#ff7043',      # Deep orange
-    'card3': '#5c6bc0',      # Light blue-purple (old card1),
+    'primary': '#0B1424',    # Deep Navy
+    'secondary': '#FF6A1A',  # Bright Brand Orange
+    'accent': '#FFFFFF',     # Neutral light (for contrast accents)
+    'card1': '#142132',      # Dark panel
+    'card2': '#1E2C3D',      # Mid panel
+    'card3': '#25374C',      # Lighter panel
 }
 
 # Repository instance
