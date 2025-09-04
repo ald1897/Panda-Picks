@@ -32,52 +32,66 @@ else:
 if 'ui' not in globals():
     from nicegui import ui
 
+# Add static files route for docs (banner image expected at docs/banner.png)
+try:
+    from nicegui import app as _app
+    _root = pathlib.Path(__file__).resolve().parent.parent.parent  # project root
+    _docs = _root / 'docs'
+    if _docs.exists():
+        _app.add_static_files('/assets', str(_docs))
+except Exception:
+    pass
+
 @ui.page('/')  # SPA entry
 @ui.page('/{_:path}')
 def main():
     ui.add_head_html('''
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         body { 
             font-family: 'Roboto', sans-serif; 
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
+            background-color: #0B1424; /* deep navy */
+            margin: 0; padding: 0; color: #FFFFFF;
         }
-        .text-red { color: #f44336; }
-        .text-green { color: #4caf50; }
-        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .text-red { color: #ff6a1a; }
+        .text-green { color: #48B553; }
+        .shadow-lg { box-shadow: 0 10px 20px -5px rgba(0,0,0,0.55), 0 6px 8px -4px rgba(0,0,0,0.35); }
+        .hero-banner { background: linear-gradient(90deg, rgba(11,20,36,0.9) 0%, rgba(11,20,36,0.55) 35%, rgba(11,20,36,0.25) 70%), url('/assets/banner.png') center/cover no-repeat; height: 220px; width:100%; position: relative; display:flex; flex-direction:column; justify-content:flex-end; }
+        .hero-inner { padding: 18px 48px; }
+        .brand-title { font-size: 48px; font-weight: 600; letter-spacing: 1px; margin:0; color:#FFFFFF; text-shadow:0 3px 10px rgba(0,0,0,0.6); }
+        .brand-sub { font-size: 16px; font-weight:400; margin-top:6px; color:#FF6A1A; letter-spacing:0.5px; }
+        .nav-bar { backdrop-filter: blur(6px); background: rgba(20,33,50,0.85); }
+        .q-btn.flat-btn { --q-primary: #FF6A1A; }
     </style>
     ''')
+    from panda_picks.ui.data import COLORS  # ensure updated palette
     router = Router()
     ui.colors(primary=COLORS['primary'], secondary=COLORS['secondary'], accent=COLORS['accent'])
-    # Header
-    with ui.header().classes('bg-primary text-white'):
-        with ui.row().classes('w-full items-center justify-between q-px-lg'):
-            ui.label('Panda Picks').classes('text-h4')
-            with ui.row().classes('items-center'):
-                ui.icon('sports_football').classes('text-h4')
-                ui.button('NFL 2025').props('flat')
+    # Compact top header (controls only)
+    with ui.header().classes('bg-transparent text-white shadow-none'):  # minimal header
+        with ui.row().classes('w-full items-center justify-end q-px-md'):
             dark_mode = ui.dark_mode()
-            ui.button(on_click=lambda: dark_mode.toggle(), icon='dark_mode').props('flat')
-
-    # Register routes from modules (capture functions for navigation)
-    landing = landing_page.register(router)
-    dashboard = dashboard_page.register(router)
-    analysis = analysis_page.register(router)
-    picks = picks_page.register(router)
-    settings = settings_page.register(router)
-    combos = combos_page.register(router)
-
-    # Navigation bar
-    with ui.row().classes('q-pa-md w-full bg-white shadow-sm'):
-        ui.button('Home', on_click=lambda: router.open(landing), icon='home').classes('q-mr-sm')
-        ui.button('Dashboard', on_click=lambda: router.open(dashboard), icon='dashboard').classes('q-mr-sm')
-        ui.button('Analysis', on_click=lambda: router.open(analysis), icon='bar_chart').classes('q-mr-sm')
-        ui.button('Picks', on_click=lambda: router.open(picks), icon='style').classes('q-mr-sm')
-        ui.button('Combos', on_click=lambda: router.open(combos), icon='functions').classes('q-mr-sm')
-        ui.button('Settings', on_click=lambda: router.open(settings), icon='settings')
-
+            ui.button(on_click=lambda: dark_mode.toggle(), icon='dark_mode').props('flat dense').classes('text-white')
+    # Hero banner
+    with ui.element('div').classes('hero-banner'):
+        with ui.element('div').classes('hero-inner'):
+            ui.html('<h1 class="brand-title">Panda Picks</h1>')
+            ui.html('<div class="brand-sub">Model-Driven Football Edges & Teaser Optimization</div>')
+    # Navigation bar (overlay style)
+    with ui.row().classes('q-px-lg q-py-sm w-full nav-bar items-center'):
+        ui.button('Home', on_click=lambda: router.open('/'), icon='home').props('flat').classes('text-white q-mr-sm')
+        # Resolve function targets
+        landing = landing_page.register(router)
+        dashboard = dashboard_page.register(router)
+        analysis = analysis_page.register(router)
+        picks = picks_page.register(router)
+        settings = settings_page.register(router)
+        combos = combos_page.register(router)
+        ui.button('Dashboard', on_click=lambda: router.open(dashboard), icon='dashboard').props('flat').classes('text-white q-mr-sm')
+        ui.button('Analysis', on_click=lambda: router.open(analysis), icon='bar_chart').props('flat').classes('text-white q-mr-sm')
+        ui.button('Picks', on_click=lambda: router.open(picks), icon='style').props('flat').classes('text-white q-mr-sm')
+        ui.button('Combos', on_click=lambda: router.open(combos), icon='functions').props('flat').classes('text-white q-mr-sm')
+        ui.button('Settings', on_click=lambda: router.open(settings), icon='settings').props('flat').classes('text-white')
     # Content frame
     router.frame().classes('w-full p-4')
 
