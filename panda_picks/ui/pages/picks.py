@@ -1,5 +1,6 @@
 from nicegui import ui
 from ..data import get_upcoming_picks
+from ...publish.twitter import build_dick_picks_thread, post_dick_picks_thread  # updated import
 
 
 def register(router):
@@ -8,10 +9,39 @@ def register(router):
         ui.label('Upcoming Picks').classes('text-h4 q-mb-lg')
         picks_data = get_upcoming_picks()
 
+        def open_dick_picks_dialog():
+            payloads = build_dick_picks_thread(include_images=False)  # dry build without images for speed
+            if not payloads:
+                ui.notify('No picks available for Dick Picks thread', color='warning')
+                return
+            with ui.dialog() as dialog, ui.card().classes('w-96 max-w-full'):
+                ui.label('Dick Picks Thread Preview').classes('text-h6 q-mb-sm')
+                with ui.scroll_area().style('max-height:300px'):
+                    for i, p in enumerate(payloads, start=1):
+                        ui.separator() if i > 1 else None
+                        text = p['text']
+                        ui.label(f"Tweet {i}/{len(payloads)} ({len(text)}/280)").classes('text-caption text-grey')
+                        ui.label(text).classes('text-body2')
+                with ui.row().classes('justify-end q-mt-md w-full'):
+                    def do_post():
+                        try:
+                            ids = post_dick_picks_thread(dry_run=False)
+                            if ids:
+                                ui.notify(f'Posted Dick Picks thread ({len(ids)} tweets).')
+                            else:
+                                ui.notify('Failed to post Dick Picks thread.', color='negative')
+                        except Exception as e:
+                            ui.notify(f'Twitter error: {e}', color='negative', position='top')
+                        dialog.close()
+                    ui.button('Cancel', on_click=dialog.close).classes('q-mr-sm')
+                    ui.button('Post Dick Picks', color='primary', on_click=do_post)
+            dialog.open()
+
         with ui.row().classes('w-full items-center q-mb-md'):
             ui.button('Export to CSV', icon='download', on_click=lambda: ui.notify('Exporting... (placeholder)')).classes('q-mr-md')
             ui.switch('Show Past Picks')  # placeholder (existing)
             show_teasers = ui.switch('Show Teaser Columns', value=True)
+            ui.button('Dick Picks Thread', icon='sports_football', on_click=open_dick_picks_dialog).props('outline color=negative')
 
         COLOR_MAP = {'WIN': 'green', 'LOSS': 'red', 'PUSH': 'grey', 'PENDING': 'orange', 'NA': 'grey'}
         if picks_data:
