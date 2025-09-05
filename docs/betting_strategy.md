@@ -47,17 +47,7 @@ EV(stake S) = Combined_Prob * (Book_Dec_Odds - 1) * S - (1 - Combined_Prob) * S
 Reject combos with Edge ≤ 0 or EV ≤ 0 before staking.
 
 ---
-## 6. Allocation Framework (Example)
-| Bucket | Legs | Target Share of Weekly Risk | Rationale |
-|--------|------|-----------------------------|-----------|
-| A | 2-leg teasers | 50% | Higher hit rate, base growth |
-| B | 3-leg teasers | 35% | Moderate variance, better payout |
-| C | 4-leg parlay  | 15% | Controlled upside slice |
-
-Guideline: Weekly Risk = 6–10% of current bankroll (e.g. Bankroll 1000 → Risk 8% = 80). Distribute by bucket share; within bucket use flat stakes (or mild edge weighting capped at 1.5× median).
-
----
-## 7. Weekly Execution Checklist
+## 6. Weekly Execution Checklist
 1. Pull model picks + lines + probabilities.  
 2. Rank & filter (injuries / thresholds).  
 3. Compute teaser lines & validate key-number movement.  
@@ -67,6 +57,16 @@ Guideline: Weekly Risk = 6–10% of current bankroll (e.g. Bankroll 1000 → Ris
 7. Allocate stakes per bucket until Risk Cap reached.  
 8. Log tickets (CSV / DB) with: Legs, Lines (base & teaser), p_i, Combined_Prob, Odds, Stake, EV.  
 9. After games: grade, update bankroll, variance metrics, recalibrate.
+
+---
+## 7. Allocation Framework (Example)
+| Bucket | Legs | Target Share of Weekly Risk | Rationale |
+|--------|------|-----------------------------|-----------|
+| A | 2-leg teasers | 50% | Higher hit rate, base growth |
+| B | 3-leg teasers | 35% | Moderate variance, better payout |
+| C | 4-leg parlay  | 15% | Controlled upside slice |
+
+Guideline: Weekly Risk = 6–10% of current bankroll (e.g. Bankroll 1000 → Risk 8% = 80). Distribute by bucket share; within bucket use flat stakes (or mild edge weighting capped at 1.5× median).
 
 ---
 ## 8. Example Week (Illustrative Numbers)
