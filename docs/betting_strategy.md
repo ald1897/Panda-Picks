@@ -70,29 +70,65 @@ Guideline: Weekly Risk = 6–10% of current bankroll (e.g. Bankroll 1000 → Ris
 
 ---
 ## 8. Example Week (Illustrative Numbers)
-Assume 4 qualified picks (A,B,C,D) after filtering with (teaser-adjusted) win probs:
+Assume 6 qualified picks (A–F) after filtering with (teaser-adjusted) win probs:
 
-| Pick | Base Line | Teaser Line | Pick_Prob (p) | Dec Odds (o) |
-|------|-----------|-------------|---------------|--------------|
-| A | -7.5 | -1.5 | 0.64 | 1.87 |
-| B | -2.5 | +3.5 | 0.62 | 1.83 |
-| C | +1.5 | +7.5 | 0.60 | 1.95 |
-| D | -3.0 | +3.0 | 0.58 | 1.90 |
+| Pick | Base Line | Teaser Line | Pick_Prob (p) | Market Dec Odds (o) |
+|------|-----------|-------------|---------------|---------------------|
+| A    | -7.5 | -1.5 | 0.64 | 1.90                |
+| B    | -2.5 | +3.5 | 0.62 | 1.90                |
+| C    | +1.5 | +7.5 | 0.60 | 1.90                |
+| D    | -3.0 | +3.0 | 0.58 | 1.90                |
+| E    | -3.0 | +3.0 | 0.58 | 1.90                |
+| F    | -3.0 | +3.0 | 0.58 | 1.90                |
 
-Tickets (stake per plan: 2-leg $10, 3-leg $14, 4-leg $12):
+### Hypothetical Profit by Teaser Type (All Legs Win)
 
-| # | Legs | Combined_Prob | Book_Dec_Odds | Edge | EV ($) | Action |
-|---|------|---------------|---------------|------|--------|--------|
-| 1 | A+B | 0.64*0.62=0.397 | 1.87*1.83=3.42 | 0.397 - 0.292=0.105 | 0.397*(2.42*10) - 0.603*10 = $2.02 | Keep |
-| 2 | A+C | 0.384 | 3.65 | 0.384 - 0.274=0.110 | $2.34 | Keep |
-| 3 | B+C | 0.372 | 3.57 | 0.372 - 0.280=0.092 | $1.67 | Keep |
-| 4 | A+D | 0.371 | 3.55 | 0.371 - 0.282=0.089 | $1.55 | Keep |
-| 5 | A+B+C | 0.238 | 3.42*1.95=6.66 | 0.238 - 0.150=0.088 | EV≈ 0.238*(5.66*14)-0.762*14 = $1.02 | Borderline |
-| 6 | A+B+D | 0.230 | 6.49 | 0.230 - 0.154=0.076 | $0.67 | Optional |
-| 7 | A+B+C+D | 0.138 | 6.66*1.90=12.65 | 0.138 - 0.079=0.059 | EV≈ 0.138*(11.65*12)-0.862*12 = $0.27 | Small stake |
+| Teaser Type | Legs | Std American Odds | Std Dec Odds | Stake ($) | Payout ($) | Profit ($) |
+|-------------|------|-------------------|--------------|-----------|------------|------------|
+| 2-leg | 2 | -135 | 1.74 | 10 | 17.40 | 7.40 |
+| 3-leg | 3 | +140 | 2.40 | 10 | 24.00 | 14.00 |
+| 4-leg | 4 | +240 | 3.40 | 10 | 34.00 | 24.00 |
 
-(If any EV ≤ 0, drop and reallocate its stake proportionally.)
+*Std Dec Odds are converted from American odds: negative -> 1 + 100/|A|, positive -> 1 + A/100. Rounded to 2 decimals.*
 
+**Important:** Above uses typical book standardized teaser pricing (2–4 leg focus). Your modeling (Combined_Prob, Edge, EV) should compare fair odds vs this payout schedule. Higher-leg (5–6) teasers are intentionally excluded to reduce variance and raise break-even reliability.
+
+### Full Combination Exposure Outcomes (Uniform Stake, 2–4 Legs Only)
+Assume we place EVERY possible teaser/parlay combination of the 6 picks A–F for sizes 2–4 (no 1-leg, no 5–6 leg) with a UNIFORM $10 stake on every ticket (50 tickets total):
+
+| Size (s) | # Combos C(6,s) | Stake per Ticket ($) | Total Stake ($) | Std Dec Odds | Payout per Win ($) | Profit per Win ($) |
+|----------|-----------------|----------------------|-----------------|--------------|--------------------|---------------------|
+| 2 | 15 | 10 | 150 | 1.74 | 17.40 | 7.40 |
+| 3 | 20 | 10 | 200 | 2.40 | 24.00 | 14.00 |
+| 4 | 15 | 10 | 150 | 3.40 | 34.00 | 24.00 |
+| TOTAL | 50 |  —  | 500 | — | — | — |
+
+Total stake across all tickets = $500.
+
+If exactly k of the 6 underlying picks win (any subset of size k), the number of winning tickets of size s is C(k,s) (0 when k < s). Total return(k) = Σ_{s=2..4} C(k,s) * (10 * dec_odds_s).
+
+| k Winners | Winning 2L | 3L | 4L | Total Return ($) | Profit ($) | ROI (%) |
+|-----------|-----------|----|----|------------------|------------|---------|
+| 0 | 0 | 0 | 0 | 0.00             | -500.00    | -100.0% |
+| 1 | 0 | 0 | 0 | 0.00             | -500.00    | -100.0% |
+| 2 | 1 | 0 | 0 | 17.40            | -17.40     | -96.5%  |
+| 3 | 3 | 1 | 0 | 76.20            | -423.80    | -84.8%  |
+| 4 | 6 | 4 | 1 | 234.40           | -265.60    | -53.1%  |
+| 5 | 10 | 10 | 5 | 490.00           | -10.00     | -2.0%   |
+| 6 | 15 | 20 | 15 | 1251.00         | +751.00    | +150.2% |
+
+Break-even first occurs at k = 5 (5 of 6 picks correct). Maximum upside (all 6 win) yields ≈ +150.2% ROI on total outlay.
+
+**Formulas:**
+- #Tickets size s placed: C(6,s) for s ∈ {2,3,4}
+- Return(k) = Σ_{s=2..4} C(k,s) * 10 * dec_s
+- Profit(k) = Return(k) − 500
+- ROI(k) = Profit(k) / 500
+
+**Notes:**
+- Uniform staking: scaling stake changes $ figures linearly; ROI unchanged.
+- Removing 5–6 leg tickets lowers variance and reduces reliance on perfect (6/6) outcomes; break-even still requires ≥5 wins.
+- To compute expected EV, apply modeled per-pick probabilities over 64 outcome states and sum weighted profits.
 ---
 ## 9. Risk Controls
 - Max exposure per single pick: ≤ 55% of total weekly risk weight (count appearances × stake).  
@@ -109,7 +145,6 @@ Tickets (stake per plan: 2-leg $10, 3-leg $14, 4-leg $12):
 | Book_Dec_Odds | Product of decimal odds offered (parlay) |
 | Fair_Dec_Odds | Reciprocal of Combined_Prob (no vig) |
 | Edge | Combined_Prob − (1 / Book_Dec_Odds) |
-| EV | Expected value of ticket given stake |
 | Key Numbers | High-frequency margin values (3, 4, 6, 7, etc.) |
 
 ---
@@ -127,4 +162,3 @@ Tickets (stake per plan: 2-leg $10, 3-leg $14, 4-leg $12):
 
 ---
 **Note:** Adjust teaser points, bucket shares, and min edge thresholds as market conditions or model calibration evolve.
-
