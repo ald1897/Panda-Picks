@@ -62,7 +62,7 @@ class TestBacktestProbabilityMetrics(unittest.TestCase):
             pass
 
     def test_probability_metrics_generated(self):
-        backtest(simulate_missing=False)
+        backtest()  # simulate_missing parameter removed
         with get_connection() as conn:
             df = pd.read_sql_query('SELECT * FROM probability_game_metrics', conn)
             self.assertFalse(df.empty, 'probability_game_metrics is empty')

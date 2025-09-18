@@ -7,6 +7,10 @@ from panda_picks.db.database import get_connection
 from panda_picks import config
 from panda_picks.config.settings import Settings
 from panda_picks.analysis.utils.probability import calculate_win_probability
+# Added Bayesian blending imports
+from panda_picks.analysis.bayesian_grades import recompute_blended_grades, load_blended_wide
+# NEW: ensure prior snapshot exists automatically
+from panda_picks.data.grades_migration import ensure_prior_populated
 
 # ---------------- Centralized configuration via Settings ---------------- #
 SIGNIFICANCE_THRESHOLDS = Settings.ADVANTAGE_THRESHOLDS  # shared mutable dict
@@ -135,6 +139,7 @@ def _compute_probabilities(df: pd.DataFrame, conn=None) -> pd.DataFrame:
 def _decide_picks(df: pd.DataFrame) -> pd.DataFrame:
     """Assign Game_Pick based on one-sided significant advantages.
     Only pick if at least one primary advantage is significant and no opposing significant signals.
+    (Reverted to original any-signal logic.)
     """
     pick_side = []
     for _, row in df.iterrows():
@@ -189,6 +194,34 @@ def _prepare_grades(conn):
         grades = grades.rename(columns={'TEAM': 'Home_Team'})
     elif 'Team' in grades.columns:
         grades = grades.rename(columns={'Team': 'Home_Team'})
+
+  # USE_BAYES_GRADES:
+    try:
+        prior_rows = ensure_prior_populated()
+        logging.info(f"Bayes: ensure_prior_populated -> {prior_rows} rows in grades_prior")
+        recompute_blended_grades(conn)
+        blended = load_blended_wide(conn)
+        if not blended.empty:
+            metric_cols = [c for c in ['OVR','OFF','DEF','PASS','PBLK','RECV','RUN','RBLK','PRSH','COV','RDEF','TACK'] if c in grades.columns]
+            grades = grades.merge(blended, on='Home_Team', how='left', suffixes=('', '_BLEND'))
+            replaced = 0
+            for m in metric_cols:
+                if m+'_BLEND' in grades.columns:
+                    mask = grades[m + '_BLEND'].notna()
+                    if mask.any():
+                        grades.loc[mask, m] = grades.loc[mask, m + '_BLEND']
+                        replaced += mask.sum()
+            logging.info(f"Bayes: applied blended metrics to {replaced} team rows.")
+            # Simple diagnostic: average weight if available
+            try:
+                weight_df = pd.read_sql_query("SELECT Metric, AVG(Weight_Current) avg_w FROM blended_grades GROUP BY Metric", conn)
+                logging.info("Bayes: average weights -> " + ", ".join(f"{r.Metric}:{r.avg_w:.3f}" for r in weight_df.itertuples()))
+            except Exception:
+                pass
+        else:
+            logging.warning("Bayes: blended table empty after recompute (check prior & current grades)")
+    except Exception as e:
+        logging.warning(f"Bayesian grade blending failed; using raw grades ({e})")
 
     opp_grades = grades.copy().rename(columns={
         'Home_Team': 'Away_Team',
@@ -276,10 +309,30 @@ def _norm_cdf(x, mu=0.0, sigma=1.0):
         return np.nan
 
 
-def makePicks():
+def makePicks(weeks: list[int] | list[str] | None = None):
+    """Generate picks for specified weeks (default all weeks 1..18).
+
+    Args:
+        weeks: Optional list of week numbers (ints) or strings (e.g., ['2','3']).
+               If None, processes all weeks 1..18.
+    """
     print(f"[{time.strftime('%H:%M:%S')}] makePicks started")
     logging.basicConfig(level=logging.INFO)
-    weeks = [str(i) for i in range(1, 19)]
+    if weeks is None:
+        week_numbers = list(range(1,19))
+    else:
+        # Normalize
+        norm = []
+        for w in weeks:
+            try:
+                norm.append(int(str(w).strip()))
+            except Exception:
+                continue
+        week_numbers = sorted({w for w in norm if 1 <= w <= 18})
+        if not week_numbers:
+            logging.warning("No valid weeks supplied; defaulting to full season 1-18")
+            week_numbers = list(range(1,19))
+    logging.info(f"Processing weeks: {week_numbers}")
     conn = get_connection()
 
     try:
@@ -287,17 +340,16 @@ def makePicks():
         _load_best_thresholds(conn)
         grades, opp_grades = _prepare_grades(conn)
 
-        for w in weeks:
-            # Read spreads (correct column name is WEEK)
-            spreads_query = f"SELECT * FROM spreads WHERE WEEK = 'WEEK{w}'"
+        for w in week_numbers:
+            w_str = str(w)
+            spreads_query = f"SELECT * FROM spreads WHERE WEEK = 'WEEK{w_str}'"
             matchups = pd.read_sql_query(spreads_query, conn)
             if matchups.empty:
-                logging.info(f"Week {w}: no spreads data; skipping")
+                logging.info(f"Week {w_str}: no spreads data; skipping")
                 continue
             matchups = pd.merge(matchups, grades, on='Home_Team', how='left')
             matchups = pd.merge(matchups, opp_grades, on='Away_Team', how='left')
 
-            # Convert numeric columns (skip identifiers)
             for col in matchups.columns:
                 if col not in ['Home_Team', 'Away_Team', 'WEEK']:
                     matchups[col] = pd.to_numeric(matchups[col], errors='coerce')
@@ -307,25 +359,27 @@ def makePicks():
             results = _compute_probabilities(results, conn)
             results = _decide_picks(results)
             results = _compute_market_and_edges(results)
-            # Filter out passes pre-edge
             results = results[results['Game_Pick'] != 'No Pick']
             if results.empty:
-                logging.info(f"Week {w}: no confident picks after filtering")
+                logging.info(f"Week {w_str}: no confident picks after filtering")
                 continue
-            # Edge filtering
             results = _apply_edge_filter(results)
             if results.empty:
-                logging.info(f"Week {w}: no picks passed edge filter")
+                logging.info(f"Week {w_str}: no picks passed edge filter")
                 continue
-            # Cover probability
             results = _compute_cover_probabilities(results)
-            # Sort by absolute edge descending, then Overall Advantage
             results = results.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
-            # Enforce max picks per week
             if len(results) > MAX_PICKS_PER_WEEK:
+                # Log trimmed games for diagnostics
+                trimmed = results.iloc[MAX_PICKS_PER_WEEK:][['Home_Team','Away_Team','Pick_Edge','Overall_Adv','Game_Pick']].copy()
+                if not trimmed.empty:
+                    logging.info(
+                        "Week %s: trimmed %d games due to MAX_PICKS_PER_WEEK=%d. Trimmed list: %s",
+                        w_str, len(trimmed), MAX_PICKS_PER_WEEK,
+                        '; '.join(f"{r.Away_Team}@{r.Home_Team} pick={r.Game_Pick} edge={r.Pick_Edge:.4f} overall={r.Overall_Adv:+.1f}" for r in trimmed.itertuples())
+                    )
                 results = results.head(MAX_PICKS_PER_WEEK)
-                logging.info(f"Week {w}: limited to top {MAX_PICKS_PER_WEEK} picks by Pick_Edge")
-            # Prepare output columns (retain backward compatibility + new metrics)
+                logging.info(f"Week {w_str}: limited to top {MAX_PICKS_PER_WEEK} picks by Pick_Edge")
             output_cols = [
                 'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close', 'Home_Odds_Close', 'Away_Odds_Close',
                 'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
@@ -333,12 +387,11 @@ def makePicks():
                 'Pressure_Mismatch', 'Explosive_Pass_Mismatch', 'Script_Control_Mismatch',
                 'Home_Win_Prob', 'Away_Win_Prob', 'Home_ML_Implied', 'Away_ML_Implied', 'Pick_Prob', 'Pick_Implied_Prob', 'Pick_Edge', 'Pick_Cover_Prob'
             ]
-# Ensure only the desired columns are present (drop others like Home_Score / Away_Score)
             for c in output_cols:
                 if c not in results.columns:
                     results[c] = np.nan
             results = results[output_cols]
-            with conn:  # ensures transaction
+            with conn:
                 cur = conn.cursor()
                 _ensure_columns(conn, 'picks', {
                     'Home_Win_Prob': 'REAL', 'Away_Win_Prob': 'REAL',
@@ -347,11 +400,10 @@ def makePicks():
                     'Pick_Prob': 'REAL', 'Pick_Implied_Prob': 'REAL', 'Pick_Edge': 'REAL', 'Pick_Cover_Prob': 'REAL',
                     'Pressure_Mismatch': 'REAL', 'Explosive_Pass_Mismatch': 'REAL', 'Script_Control_Mismatch': 'REAL'
                 })
-                teams_pairs = list(zip(results['Home_Team'], results['Away_Team']))
-                for home, away in teams_pairs:
-                    cur.execute("DELETE FROM picks WHERE WEEK = ? AND Home_Team = ? AND Away_Team = ?", (f"WEEK{w}", home, away))
+                for home, away in zip(results['Home_Team'], results['Away_Team']):
+                    cur.execute("DELETE FROM picks WHERE WEEK = ? AND Home_Team = ? AND Away_Team = ?", (f"WEEK{w_str}", home, away))
                 results.to_sql('picks', conn, if_exists='append', index=False)
-            logging.info(f"Week {w}: inserted {len(results)} picks")
+            logging.info(f"Week {w_str}: inserted {len(results)} picks")
     except Exception as e:
         logging.exception(f"makePicks failed: {e}")
     finally:

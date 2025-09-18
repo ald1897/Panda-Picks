@@ -63,6 +63,7 @@ def main():
         .nav-bar { backdrop-filter: blur(6px); background: rgba(20,33,50,0.85); }
         .q-btn.flat-btn { --q-primary: #FF6A1A; }
     </style>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
     ''')
     from panda_picks.ui.data import COLORS  # ensure updated palette
     router = Router()

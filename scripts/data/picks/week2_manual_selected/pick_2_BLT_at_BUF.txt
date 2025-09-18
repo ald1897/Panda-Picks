@@ -1,0 +1,8 @@
+- Baseline Model Edge: Overall edge -6.2 (multi-factor threshold clearance)
+- Unit-Level Differential: Off -4.0 / Def -7.5 (balanced profile)
+- Game Script Expectation: Edge facilitates early leverage + mid-game pace control
+- Line Evaluation: Posted -11.5 retains value vs internal fair (qualitative)
+- Teaser Consideration: -11.5 -> -5.5 (+6.0 pts) crosses -10, -9, -8, -7, -6
+- Risk / Failure Modes: Turnover clustering, explosive play variance, red-zone stalls
+- Why This Still Rates as a Play: Redundant edges reduce reliance on a single outlier outcome
+- Confidence Indicator: 31%

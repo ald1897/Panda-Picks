@@ -20,37 +20,6 @@ FEATURES = [
     'Pressure_Mismatch', 'Explosive_Pass_Mismatch', 'Script_Control_Mismatch'
 ]
 
-SIMULATION_SEED = 777
-SIM_K_MARGIN = 0.75
-SIM_BASE_TOTAL = 44
-SIM_TOTAL_JITTER = 7
-
-
-def simulate_missing_scores(df: pd.DataFrame, adv_col: str = 'Overall_Adv') -> pd.DataFrame:
-    rng = np.random.default_rng(SIMULATION_SEED)
-    for col in ['Home_Score', 'Away_Score']:
-        if col not in df.columns:
-            df[col] = np.nan
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    mask = df['Home_Score'].isna() | df['Away_Score'].isna()
-    if not mask.any():
-        return df
-    subset = df.loc[mask]
-    for idx, row in subset.iterrows():
-        adv = row.get(adv_col, 0)
-        try:
-            adv = float(adv)
-        except (TypeError, ValueError):
-            adv = 0
-        exp_margin = SIM_K_MARGIN * adv
-        total = SIM_BASE_TOTAL + rng.uniform(-SIM_TOTAL_JITTER, SIM_TOTAL_JITTER)
-        margin = rng.normal(exp_margin, 7)
-        home_pts = (total + margin) / 2
-        away_pts = total - home_pts
-        df.at[idx, 'Home_Score'] = int(max(0, round(home_pts)))
-        df.at[idx, 'Away_Score'] = int(max(0, round(away_pts)))
-    return df
-
 
 def _compute_advantages(df: pd.DataFrame) -> pd.DataFrame:
     # ADVANTAGE_BASE_COLUMNS imported from picks module (list of tuples name, lambda)
@@ -73,7 +42,10 @@ def _compute_advantages(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_dataset(conn, simulate_missing: bool = False) -> pd.DataFrame:
+def build_dataset(conn) -> pd.DataFrame:
+    """Build modeling dataset using only real (recorded) scores.
+    Games without scores are marked but NOT simulated.
+    """
     spreads = pd.read_sql_query("SELECT * FROM spreads", conn)
     grades = pd.read_sql_query("SELECT * FROM grades", conn)
     # Normalize grade team col
@@ -89,8 +61,6 @@ def build_dataset(conn, simulate_missing: bool = False) -> pd.DataFrame:
     })
     merged = spreads.merge(grades, on='Home_Team', how='left').merge(opp_grades, on='Away_Team', how='left')
     merged = _compute_advantages(merged)
-    if simulate_missing:
-        merged = simulate_missing_scores(merged)
     # Outcome: only if both scores present
     merged['Home_Score'] = pd.to_numeric(merged['Home_Score'], errors='coerce')
     merged['Away_Score'] = pd.to_numeric(merged['Away_Score'], errors='coerce')
@@ -185,11 +155,12 @@ def persist_model(conn, model_artifacts: dict, cv_metrics: pd.DataFrame):
         cv_metrics.to_sql('model_logit_cv_metrics', conn, if_exists='replace', index=False)
 
 
-def train(simulate_missing: bool = True):
+def train():
+    """Train logistic regression model using only real completed games (no simulated scores)."""
     logging.info('Model training started')
     conn = get_connection()
     try:
-        dataset = build_dataset(conn, simulate_missing=simulate_missing)
+        dataset = build_dataset(conn)
         # Ensure feature presence (Home_Line_Close present in spreads)
         for f in FEATURES:
             if f not in dataset.columns:
@@ -205,7 +176,7 @@ def train(simulate_missing: bool = True):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    artifacts, metrics = train(simulate_missing=True)
+    artifacts, metrics = train()
     print('Coefficients:', artifacts['coeffs'])
     print('Intercept:', artifacts['intercept'])
     print(metrics.head())

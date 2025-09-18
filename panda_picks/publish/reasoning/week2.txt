@@ -1,0 +1,72 @@
+## Week 2 – Pick 1: PHI @ KC
+- Baseline Model Edge: Overall edge -11.0 (negative = away leverage) vs threshold 2.0 → away (PHI) qualifies with multi-axis superiority.
+- Unit-Level Differential (pick-adjusted): Off +8.36 / Def +15.16 (after inverting signs for away advantage). Defensive delta is the primary margin driver; offense comfortably positive.
+- Aspect Matchup Highlights (pick-relative): +6.67 Pressure Mismatch resilience (pass pro vs pass rush differential), +5.27 Explosive Pass potential, +8.61 Script Control (run blocking vs run defense) – three independent paths to sustained EPA.
+- Aspect Liabilities: Minimal – only modest residual trench volatility if KC generates interior pressure despite mismatch metrics; turnover clustering early could flatten edge.
+- Game Script Expectation: PHI pursues early scripted intermediate/explosive pass sequences to force KC into higher pass rate; once margin widens, leverage run-game efficiency (script control +8.6) to compress KC possessions.
+- Line Evaluation: Market KC -1.5 (implies near coin) vs model fair PHI -? (edge magnitude) preserves cushion; pricing still fails to reflect stacked PHI defensive / script leverage.
+- Teaser Consideration: +1.5 → +7.5 excellent corridor (captures 3/6/7) though raw ML already strong given >94% model win prob.
+- Risk / Failure Modes: (1) Early red-zone stalls reduce scoreboard separation. (2) Hidden special teams / short fields gift KC quick points. (3) PHI pass protection underperforms vs bespoke KC pressure looks.
+- Why This Still Rates as a Play: Convergent pressure, explosive pass, and run control edges reduce single-channel fragility; any two succeeding produce multi-score expectation.
+- Confidence Indicator: 94.3%
+
+## Week 2 – Pick 2: IND vs DEN (DEN @ IND)
+- Baseline Model Edge: Overall edge +6.43 (positive = home leverage) vs 2.0 → home (IND) qualifies with balanced, defense-tilted composite.
+- Unit-Level Differential: Off +0.23 / Def +6.14 – Defensive slant drives pick but offense avoids being a drag (near neutral Off delta).
+- Aspect Matchup Highlights: +18.13 Pressure Mismatch (pass block buffer against DEN rush), +3.03 Script Control, modest negative Explosive Pass (-3.91) but compensated by protection advantage enabling sustained drives.
+- Aspect Liabilities: Explosive Pass Mismatch slightly unfavorable – requires sequencing efficiency & YAC; limited vertical margin early.
+- Game Script Expectation: IND leverages pass pro stability to build early possession count edge; second half shifts toward mixed tempo exploiting DEN defensive fatigue while defense constrains explosive response.
+- Line Evaluation: Market IND -1.5 (small favorite) vs model edge suggests fair closer toward -3 to -4. Overlay remains actionable.
+- Teaser Consideration: -1.5 → +4.5 acceptable but raw spread playable; teaser value secondary given modest total volatility.
+- Risk / Failure Modes: (1) DEN manufactures pressure via overloads nullifying pressure mismatch. (2) Low explosive success traps IND in red-zone field goals. (3) Turnover regression flips expected drive count.
+- Why This Still Rates as a Play: Large pass protection edge cushions moderate offensive talent gap while defense supplies primary separation path.
+- Confidence Indicator: 80.2%
+
+## Week 2 – Pick 3: LA @ TEN
+- Baseline Model Edge: Overall edge -20.57 (away dominance) >> threshold → away (LA) flag with elite multi-channel margin potential.
+- Unit-Level Differential (pick-adjusted): Off +17.08 / Def +10.77 – Massive offensive leverage plus sturdy defensive cushion; redundancy.
+- Aspect Matchup Highlights: +45.35 Pressure Mismatch (pass pro vs opposing rush blowout), +1.69 Explosive Pass still positive, +20.04 Script Control – combined suggests sustained vertical + on-schedule threats.
+- Aspect Liabilities: Minimal – moderate risk of situational run defense soft spots if game shortens possessions early.
+- Game Script Expectation: LA accelerates tempo early leveraging protection gulf; once two scores up, balanced call sheet milks clock while pressure mismatch maintains clean pockets.
+- Line Evaluation: Market TEN +5.5 vs fair near double digits; spread mispricing leaves secondary value beyond ML.
+- Teaser Consideration: -5.5 → +0.5 mediocre (doesn’t cross +3). Straight spread preferable / alt lines viable.
+- Risk / Failure Modes: (1) Early negative turnover swing compresses script. (2) Red-zone inefficiency transforms yardage edge into narrower lead. (3) Weather / field variance dampens protection advantage.
+- Why This Still Rates as a Play: Protection + script control dual spikes drastically lower volatility of offensive floor, enabling compounding drives.
+- Confidence Indicator: 99.3%
+
+## Week 2 – Pick 4: TB @ HST
+- Baseline Model Edge: Overall edge -3.53 vs 2.0 → away (TB) qualifies but narrower margin demands sizing discipline.
+- Unit-Level Differential (pick-adjusted): Off +5.30 / Def +5.53 (inverted from negatives) – Balanced moderate edges; no single overwhelming lever.
+- Aspect Matchup Highlights: +16.02 Pressure Mismatch (pass pro resilience), -15.07 Explosive Pass headwind (must manufacture explosives), +1.31 Script Control near neutral.
+- Aspect Liabilities: Explosive pass deficit increases dependence on sustained drives / red-zone conversion.
+- Game Script Expectation: TB pursues controlled intermediate game early to keep negative explosive differential from mattering; clock / chain control shifts pressure onto HST efficiency.
+- Line Evaluation: Market HST -2.5 → picking dog with internal fair closer to PK / TB small favorite; value via polarity flip.
+- Teaser Consideration: +2.5 → +8.5 strong (captures 3/6/7) enhancing edge resilience.
+- Risk / Failure Modes: (1) Failure to hit even one explosive tilts leverage to host. (2) Negative early drive script forces lower-probability vertical shots. (3) Red-zone stall cluster caps upside.
+- Why This Still Rates as a Play: Protection buffer grants runway for incremental EPA accumulation despite explosive gap.
+- Confidence Indicator: 69.3%
+
+## Week 2 – Pick 5: SF @ NO
+- Baseline Model Edge: Overall edge -7.10 vs 2.0 → away (SF) valid with defense-forward posture.
+- Unit-Level Differential (pick-adjusted): Off +0.82 / Def +11.82 – Defense carries thesis; offense neutral-plus.
+- Aspect Matchup Highlights: -2.08 Pressure Mismatch (slight protection concern), -0.67 Explosive Pass near flat, -2.10 Script Control modest drag → reliance on defensive disruption & situational execution.
+- Aspect Liabilities: Triple minor negatives raise sensitivity to turnover or field position variance.
+- Game Script Expectation: SF leans defense to generate short fields; offensive approach emphasizes mistake avoidance until leverage established.
+- Line Evaluation: Market NO +3.0 (SF -3) vs internal stronger lean; still playable with expectation of defensive drive compression.
+- Teaser Consideration: -3.0 → +3.0 attractive corridor enhancer if paired; straight spread ok.
+- Risk / Failure Modes: (1) Protection struggles amplify low explosive lean. (2) Special teams hidden yardage extends NO drives. (3) Early deficit stresses mediocre script control.
+- Why This Still Rates as a Play: High defensive delta overcomes modest offensive stagnation risk; low fragility to single failure mode.
+- Confidence Indicator: 82.9%
+
+## Week 2 – Pick 6: NE @ MIA
+- Baseline Model Edge: Overall edge -3.14 vs 2.0 → away (NE) qualifies with defense-led value.
+- Unit-Level Differential (pick-adjusted): Off +10.03 / Def +? (Defense_Adv inverted: 10.03; Offense_Adv originally +4.01 home vantage → away pick diff Off +4.01?) Clarify: raw Offense_Adv=4.01 (home fav), Defense_Adv=-10.03 (away edge) so pick-adjusted Off +? mild negative; Defense +10.03 primary lever.
+- Aspect Matchup Highlights: -2.19 Pressure Mismatch (slight pass-pro concern), -28.85 Explosive Pass heavy drag, +4.29 Script Control minor positive.
+- Aspect Liabilities: Significant explosive pass deficit increases variance & caps ceiling; must win efficiency + defensive field position axis.
+- Game Script Expectation: NE compresses game length with mixed run / quick game, leaning on defensive leverage to tilt late-possession states.
+- Line Evaluation: Market MIA -1.0 vs model away edge; pricing discount offsets explosive deficit risk.
+- Teaser Consideration: +1.0 → +7.0 acceptable but lacks +8.5 capture; still stabilizing outcome distribution.
+- Risk / Failure Modes: (1) Forced into vertical chase script nullifying control edge. (2) MIA early explosive strikes widen gap beyond defensive correction. (3) Pass-pro stress amplifies turnover probability.
+- Why This Still Rates as a Play: Defense & modest script control mitigate explosive disparity if early game remains within one score.
+- Confidence Indicator: 69.9%
+

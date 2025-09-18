@@ -95,6 +95,60 @@ def create_tables():
 )
                    ''')
 
+    # Prior season grades snapshot (single row per team, no week dimension)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS grades_prior (
+         TEAM TEXT PRIMARY KEY,
+         OVR REAL,
+         OFF REAL,
+         PASS REAL,
+         RUN REAL,
+         RECV REAL,
+         PBLK REAL,
+         RBLK REAL,
+         DEF REAL,
+         RDEF REAL,
+         TACK REAL,
+         PRSH REAL,
+         COV REAL,
+         WINS INTEGER,
+         LOSSES INTEGER,
+         TIES INTEGER,
+         PTS_SCORED INTEGER,
+         PTS_ALLOWED INTEGER,
+         SOURCE TEXT,
+         CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # Weekly snapshots of current season grades (audit trail)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS grades_snapshots (
+         Season INTEGER,
+         Week TEXT,
+         TEAM TEXT,
+         OVR REAL,
+         OFF REAL,
+         PASS REAL,
+         RUN REAL,
+         RECV REAL,
+         PBLK REAL,
+         RBLK REAL,
+         DEF REAL,
+         RDEF REAL,
+         TACK REAL,
+         PRSH REAL,
+         COV REAL,
+         WINS INTEGER,
+         LOSSES INTEGER,
+         TIES INTEGER,
+         PTS_SCORED INTEGER,
+         PTS_ALLOWED INTEGER,
+         SNAPSHOT_TS TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (Season, Week, TEAM)
+    )
+    ''')
+
     # Create advanced_stats table
     cursor.execute('''
                    CREATE TABLE IF NOT EXISTS advanced_stats (
@@ -209,7 +263,6 @@ def create_tables():
                        )
                    ''')
 
-    # Duplicate teaser_results creation block retained above; leave as-is.
 
     # Excluded teams (manual UI exclusions for combos)
     cursor.execute('''

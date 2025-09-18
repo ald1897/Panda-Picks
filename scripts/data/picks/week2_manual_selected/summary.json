@@ -1,0 +1,72 @@
+[
+  {
+    "pick_index": "1",
+    "pick_code": "ARZ",
+    "matchup": "CAR@ARZ",
+    "pick_side": "ARZ",
+    "base_line": "-6.5",
+    "teaser_line": "-0.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\CAR_at_ARZ_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\CAR__at__ARZ_reason.png"
+  },
+  {
+    "pick_index": "2",
+    "pick_code": "BLT",
+    "matchup": "BLT@BUF",
+    "pick_side": "BLT",
+    "base_line": "-11.5",
+    "teaser_line": "-5.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\BLT_at_BUF_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\BLT__at__BUF_reason.png"
+  },
+  {
+    "pick_index": "3",
+    "pick_code": "TB",
+    "matchup": "TB@HST",
+    "pick_side": "TB",
+    "base_line": "+2.5",
+    "teaser_line": "+8.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\TB_at_HST_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\TB__at__HST_reason.png"
+  },
+  {
+    "pick_index": "4",
+    "pick_code": "IND",
+    "matchup": "DEN@IND",
+    "pick_side": "IND",
+    "base_line": "+2.5",
+    "teaser_line": "+8.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\DEN_at_IND_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\DEN__at__IND_reason.png"
+  },
+  {
+    "pick_index": "5",
+    "pick_code": "PHI",
+    "matchup": "PHI@KC",
+    "pick_side": "PHI",
+    "base_line": "-1.5",
+    "teaser_line": "+4.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\PHI_at_KC_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\PHI__at__KC_reason.png"
+  },
+  {
+    "pick_index": "6",
+    "pick_code": "SF",
+    "matchup": "SF@NO",
+    "pick_side": "SF",
+    "base_line": "-3",
+    "teaser_line": "+3",
+    "metrics_image": "data\\picks\\week2_manual_selected\\SF_at_NO_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\SF__at__NO_reason.png"
+  },
+  {
+    "pick_index": "7",
+    "pick_code": "LA",
+    "matchup": "LA@TEN",
+    "pick_side": "LA",
+    "base_line": "-5.5",
+    "teaser_line": "+0.5",
+    "metrics_image": "data\\picks\\week2_manual_selected\\LA_at_TEN_styled_metrics.png",
+    "reasoning_image": "data\\picks\\week2_manual_selected\\LA__at__TEN_reason.png"
+  }
+]
