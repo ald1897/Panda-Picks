@@ -37,7 +37,11 @@ def _implied_probs(home_odds, away_odds):
 
 
 class PickService:
-    """Service layer for generating picks. Bridges old logic and new architecture."""
+    """Service layer for generating picks. Bridges old logic and new architecture.
+
+    Selection rule (original): Pick a side if ANY of the primary advantages (Overall, Offense, Defense)
+    is significant for that side and there is no opposing significant signal.
+    """
 
     def __init__(self, spread_repo=None, grade_repo=None, pick_repo=None, settings=Settings):
         self.spread_repo = spread_repo or SpreadRepository()

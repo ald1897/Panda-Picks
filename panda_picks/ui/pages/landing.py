@@ -31,4 +31,30 @@ def register(router):
                 3. **Analysis**: Scripts analyze data to generate insights and picks.\n
                 4. **Presentation**: Results are displayed in the dashboard and analysis pages.
             ''').classes('text-body1')
+        with ui.card().classes('w-full q-mt-lg q-pa-lg shadow-lg'):
+            ui.label('Twitter').classes('text-h5 q-mb-md')
+            ui.label('Follow Panda Picks on Twitter').classes('text-h5 q-mt-lg q-mb-md')
+            # Twitter feed container
+            ui.html('<div id="twitter-timeline" style="width:100%"></div>')
+            # Programmatic embed for SPA reliability
+            ui.run_javascript('''
+                (function() {
+                    const screenName = 'PandasPicksNFL';
+                    function render() {
+                        const el = document.getElementById('twitter-timeline');
+                        if (!el) { setTimeout(render, 200); return; }
+                        el.innerHTML = '';
+                        if (window.twttr && twttr.widgets && twttr.widgets.createTimeline) {
+                            twttr.widgets.createTimeline(
+                                { sourceType: 'profile', screenName },
+                                el,
+                                { height: 650, theme: 'dark', dnt: true }
+                            );
+                        } else {
+                            setTimeout(render, 250);
+                        }
+                    }
+                    render();
+                })();
+            ''')
     return landing

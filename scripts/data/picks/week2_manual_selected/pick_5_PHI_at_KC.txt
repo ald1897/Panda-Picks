@@ -1,0 +1,10 @@
+- Baseline Model Edge: Overall edge -11.0 (negative = away leverage) vs threshold 2.0 → away (PHI) qualifies with multi-axis superiority.
+- Unit-Level Differential (pick-adjusted): Off +8.36 / Def +15.16 (after inverting signs for away advantage). Defensive delta is the primary margin driver; offense comfortably positive.
+- Aspect Matchup Highlights (pick-relative): +6.67 Pressure Mismatch resilience (pass pro vs pass rush differential), +5.27 Explosive Pass potential, +8.61 Script Control (run blocking vs run defense) – three independent paths to sustained EPA.
+- Aspect Liabilities: Minimal – only modest residual trench volatility if KC generates interior pressure despite mismatch metrics; turnover clustering early could flatten edge.
+- Game Script Expectation: PHI pursues early scripted intermediate/explosive pass sequences to force KC into higher pass rate; once margin widens, leverage run-game efficiency (script control +8.6) to compress KC possessions.
+- Line Evaluation: Market KC -1.5 (implies near coin) vs model fair PHI -? (edge magnitude) preserves cushion; pricing still fails to reflect stacked PHI defensive / script leverage.
+- Teaser Consideration: +1.5 → +7.5 excellent corridor (captures 3/6/7) though raw ML already strong given >94% model win prob.
+- Risk / Failure Modes: (1) Early red-zone stalls reduce scoreboard separation. (2) Hidden special teams / short fields gift KC quick points. (3) PHI pass protection underperforms vs bespoke KC pressure looks.
+- Why This Still Rates as a Play: Convergent pressure, explosive pass, and run control edges reduce single-channel fragility; any two succeeding produce multi-score expectation.
+- Confidence Indicator: 94.3%
