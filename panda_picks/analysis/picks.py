@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import logging
 import time
+from datetime import datetime
 
 from panda_picks.db.database import get_connection
 from panda_picks import config
@@ -11,6 +12,10 @@ from panda_picks.analysis.utils.probability import calculate_win_probability
 from panda_picks.analysis.bayesian_grades import recompute_blended_grades, load_blended_wide
 # NEW: ensure prior snapshot exists automatically
 from panda_picks.data.grades_migration import ensure_prior_populated
+# NEW: team normalizer
+from panda_picks.utils import normalize_df_team_cols
+# NEW PHASE 3: model calibration utilities
+from panda_picks.analysis.model_calibration import fit_margin_linear, compute_model_metrics
 
 # ---------------- Centralized configuration via Settings ---------------- #
 SIGNIFICANCE_THRESHOLDS = Settings.ADVANTAGE_THRESHOLDS  # shared mutable dict
@@ -48,6 +53,17 @@ PRIMARY_ADV_COLS = ['Overall_Adv', 'Offense_Adv', 'Defense_Adv']
 
 # ---- Schema helpers ---- #
 
+def _round_numeric_cols(df: pd.DataFrame, decimals: int = 3) -> pd.DataFrame:
+    try:
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        if len(num_cols) > 0:
+            df[num_cols] = df[num_cols].round(decimals)
+    except Exception:
+        pass
+    return df
+
+# ---- Schema helpers ---- #
+
 def _table_exists(conn, table_name: str) -> bool:
     cur = conn.cursor()
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=\"" + table_name + "\"")
@@ -67,11 +83,22 @@ def _ensure_columns(conn, table_name: str, cols_types: dict):
 
 
 def _classify_significance(df: pd.DataFrame) -> pd.DataFrame:
+    # Always classify the classic three
     for col in PRIMARY_ADV_COLS:
+        if col not in df.columns:
+            continue
         thresh = SIGNIFICANCE_THRESHOLDS.get(col, 0)
         sig_col = f'{col}_sig'
         df[sig_col] = np.select(
             [df[col] >= thresh, df[col] <= -thresh],
+            ['home significant', 'away significant'],
+            default='insignificant'
+        )
+    # Also classify blended if available and non-null in this dataset
+    if 'Blended_Adv' in df.columns and df['Blended_Adv'].notna().any():
+        bthresh = SIGNIFICANCE_THRESHOLDS.get('Blended_Adv', SIGNIFICANCE_THRESHOLDS.get('Overall_Adv', 0))
+        df['Blended_Adv_sig'] = np.select(
+            [df['Blended_Adv'] >= bthresh, df['Blended_Adv'] <= -bthresh],
             ['home significant', 'away significant'],
             default='insignificant'
         )
@@ -130,20 +157,29 @@ def _compute_probabilities(df: pd.DataFrame, conn=None) -> pd.DataFrame:
         df['Home_Win_Prob'] = probs.clip(0, 1)
         df['Away_Win_Prob'] = 1 - df['Home_Win_Prob']
     else:
-        # Fallback simple logistic on overall advantage
-        df['Home_Win_Prob'] = df['Overall_Adv'].apply(calculate_win_probability)
+        # Fallback simple logistic preferring Blended_Adv when available per-row
+        def _adv_for_row(r):
+            bv = r.get('Blended_Adv')
+            if pd.notna(bv):
+                return float(bv)
+            return float(r.get('Overall_Adv', 0.0))
+        df['Home_Win_Prob'] = df.apply(lambda r: calculate_win_probability(_adv_for_row(r)), axis=1)
         df['Away_Win_Prob'] = 1 - df['Home_Win_Prob']
     return df
 
 
 def _decide_picks(df: pd.DataFrame) -> pd.DataFrame:
     """Assign Game_Pick based on one-sided significant advantages.
-    Only pick if at least one primary advantage is significant and no opposing significant signals.
-    (Reverted to original any-signal logic.)
+    Prioritize blended significance if available alongside Offense/Defense.
     """
     pick_side = []
+    use_cols = ['Offense_Adv', 'Defense_Adv']
+    if 'Blended_Adv_sig' in df.columns:
+        use_cols = ['Blended_Adv'] + use_cols
+    else:
+        use_cols = ['Overall_Adv'] + use_cols
     for _, row in df.iterrows():
-        signals = [row.get(f'{c}_sig', 'insignificant') for c in PRIMARY_ADV_COLS]
+        signals = [row.get(f'{c}_sig', 'insignificant') for c in use_cols]
         home_sig = any(s == 'home significant' for s in signals)
         away_sig = any(s == 'away significant' for s in signals)
         if home_sig and not away_sig:
@@ -194,6 +230,8 @@ def _prepare_grades(conn):
         grades = grades.rename(columns={'TEAM': 'Home_Team'})
     elif 'Team' in grades.columns:
         grades = grades.rename(columns={'Team': 'Home_Team'})
+    # Normalize team names centrally
+    grades = normalize_df_team_cols(grades, ['Home_Team'])
 
   # USE_BAYES_GRADES:
     try:
@@ -347,6 +385,8 @@ def makePicks(weeks: list[int] | list[str] | None = None):
             if matchups.empty:
                 logging.info(f"Week {w_str}: no spreads data; skipping")
                 continue
+            # Normalize team codes from spreads to be resilient across feeds
+            matchups = normalize_df_team_cols(matchups, ['Home_Team','Away_Team'])
             matchups = pd.merge(matchups, grades, on='Home_Team', how='left')
             matchups = pd.merge(matchups, opp_grades, on='Away_Team', how='left')
 
@@ -355,6 +395,8 @@ def makePicks(weeks: list[int] | list[str] | None = None):
                     matchups[col] = pd.to_numeric(matchups[col], errors='coerce')
 
             results = _calculate_advantages(matchups.copy())
+            # Attach Phase 2 features
+            results = _attach_advanced_matchup_features(conn, results, int(w))
             results = _classify_significance(results)
             results = _compute_probabilities(results, conn)
             results = _decide_picks(results)
@@ -367,30 +409,59 @@ def makePicks(weeks: list[int] | list[str] | None = None):
             if results.empty:
                 logging.info(f"Week {w_str}: no picks passed edge filter")
                 continue
+            # PHASE 3: fit linear margin model on prior weeks and compute model metrics
+            model_params = None
+            if Settings.MODEL_ENABLED and int(w) > Settings.MODEL_MIN_TRAIN_WEEKS:
+                try:
+                    season_now = datetime.now().year
+                    model_params = fit_margin_linear(conn, season_now, int(w), None)
+                    if model_params:
+                        logging.info(f"Week {w_str}: fitted margin model with n={model_params.n}, r2={model_params.r2:.3f}, resid_std={model_params.resid_std:.2f}")
+                    else:
+                        logging.info(f"Week {w_str}: insufficient data to fit margin model; using fallback")
+                except Exception as e:
+                    logging.info(f"Week {w_str}: model fit failed ({e}); using fallback")
+            results = compute_model_metrics(results, model_params, int(w))
+            # Apply model-edge gating only if model trained
+            if Settings.MODEL_ENABLED and model_params is not None:
+                before_model = len(results)
+                results = results[results['Model_Edge'] >= Settings.MODEL_MIN_EDGE]
+                logging.info(f"Week {w_str}: model edge gate {before_model} -> {len(results)} (MIN_EDGE={Settings.MODEL_MIN_EDGE})")
+                if results.empty:
+                    logging.info(f"Week {w_str}: no picks passed model edge gate")
+                    continue
+            # Existing cover probability (normal approx) retained as Pick_Cover_Prob for comparison
             results = _compute_cover_probabilities(results)
-            results = results.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+            # Prefer sorting by blended advantage if available
+            sort_adv_col = 'Blended_Adv' if 'Blended_Adv' in results.columns else 'Overall_Adv'
+            results = results.sort_values(by=['Pick_Edge', sort_adv_col], ascending=[False, False])
             if len(results) > MAX_PICKS_PER_WEEK:
                 # Log trimmed games for diagnostics
-                trimmed = results.iloc[MAX_PICKS_PER_WEEK:][['Home_Team','Away_Team','Pick_Edge','Overall_Adv','Game_Pick']].copy()
+                trimmed = results.iloc[MAX_PICKS_PER_WEEK:][['Home_Team','Away_Team','Pick_Edge',sort_adv_col,'Game_Pick']].copy()
                 if not trimmed.empty:
                     logging.info(
                         "Week %s: trimmed %d games due to MAX_PICKS_PER_WEEK=%d. Trimmed list: %s",
                         w_str, len(trimmed), MAX_PICKS_PER_WEEK,
-                        '; '.join(f"{r.Away_Team}@{r.Home_Team} pick={r.Game_Pick} edge={r.Pick_Edge:.4f} overall={r.Overall_Adv:+.1f}" for r in trimmed.itertuples())
+                        '; '.join(f"{r.Away_Team}@{r.Home_Team} pick={r.Game_Pick} edge={r.Pick_Edge:.4f} adv={getattr(r, sort_adv_col):+.1f}" for r in trimmed.itertuples())
                     )
                 results = results.head(MAX_PICKS_PER_WEEK)
                 logging.info(f"Week {w_str}: limited to top {MAX_PICKS_PER_WEEK} picks by Pick_Edge")
             output_cols = [
                 'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close', 'Home_Odds_Close', 'Away_Odds_Close',
                 'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
-                'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig',
+                'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig', 'Blended_Adv_sig',
                 'Pressure_Mismatch', 'Explosive_Pass_Mismatch', 'Script_Control_Mismatch',
+                'Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv',
+                # Phase 3 additions
+                'Expected_Margin','Cover_Prob','Model_Edge','Confidence_Score',
                 'Home_Win_Prob', 'Away_Win_Prob', 'Home_ML_Implied', 'Away_ML_Implied', 'Pick_Prob', 'Pick_Implied_Prob', 'Pick_Edge', 'Pick_Cover_Prob'
             ]
             for c in output_cols:
                 if c not in results.columns:
                     results[c] = np.nan
             results = results[output_cols]
+            # Round numeric columns before persisting to DB
+            results = _round_numeric_cols(results, 3)
             with conn:
                 cur = conn.cursor()
                 _ensure_columns(conn, 'picks', {
@@ -398,7 +469,11 @@ def makePicks(weeks: list[int] | list[str] | None = None):
                     'Home_Odds_Close': 'REAL', 'Away_Odds_Close': 'REAL',
                     'Home_ML_Implied': 'REAL', 'Away_ML_Implied': 'REAL',
                     'Pick_Prob': 'REAL', 'Pick_Implied_Prob': 'REAL', 'Pick_Edge': 'REAL', 'Pick_Cover_Prob': 'REAL',
-                    'Pressure_Mismatch': 'REAL', 'Explosive_Pass_Mismatch': 'REAL', 'Script_Control_Mismatch': 'REAL'
+                    'Pressure_Mismatch': 'REAL', 'Explosive_Pass_Mismatch': 'REAL', 'Script_Control_Mismatch': 'REAL',
+                    'Off_Comp_Diff': 'REAL','Def_Comp_Diff': 'REAL','Net_Composite': 'REAL','Net_Composite_norm': 'REAL','Blended_Adv': 'REAL',
+                    'Blended_Adv_sig': 'TEXT',
+                    # Phase 3 columns
+                    'Expected_Margin': 'REAL','Cover_Prob': 'REAL','Model_Edge': 'REAL','Confidence_Score': 'REAL'
                 })
                 for home, away in zip(results['Home_Team'], results['Away_Team']):
                     cur.execute("DELETE FROM picks WHERE WEEK = ? AND Home_Team = ? AND Away_Team = ?", (f"WEEK{w_str}", home, away))
@@ -425,9 +500,13 @@ def generate_week_picks(week):
         if matchups.empty:
             logger.warning(f"Week {week_str}: no spreads data")
             return pd.DataFrame()
+        # Normalize team codes
+        matchups = normalize_df_team_cols(matchups, ['Home_Team','Away_Team'])
         merged = pd.merge(matchups, grades, on='Home_Team', how='left')
         merged = pd.merge(merged, opp_grades, on='Away_Team', how='left')
         merged = _calculate_advantages(merged)
+        # Attach Phase 2 features
+        merged = _attach_advanced_matchup_features(conn, merged, int(week))
         merged = _classify_significance(merged)
         merged = _compute_probabilities(merged, conn)
         merged = _compute_market_and_edges(merged)
@@ -440,8 +519,30 @@ def generate_week_picks(week):
         if merged.empty:
             logger.info(f"Week {week_str}: no picks passed edge filter")
             return merged
+        # PHASE 3: fit and score model for a single week
+        model_params = None
+        if Settings.MODEL_ENABLED and int(week) > Settings.MODEL_MIN_TRAIN_WEEKS:
+            try:
+                season_now = datetime.now().year
+                model_params = fit_margin_linear(conn, season_now, int(week), None)
+                if model_params:
+                    logger.info(f"Week {week_str}: fitted margin model with n={model_params.n}, r2={model_params.r2:.3f}, resid_std={model_params.resid_std:.2f}")
+                else:
+                    logger.info(f"Week {week_str}: insufficient data to fit margin model; using fallback")
+            except Exception as e:
+                logger.info(f"Week {week_str}: model fit failed ({e}); using fallback")
+        merged = compute_model_metrics(merged, model_params, int(week))
+        if Settings.MODEL_ENABLED and model_params is not None:
+            before_model = len(merged)
+            merged = merged[merged['Model_Edge'] >= Settings.MODEL_MIN_EDGE]
+            logger.info(f"Week {week_str}: model edge gate {before_model} -> {len(merged)} (MIN_EDGE={Settings.MODEL_MIN_EDGE})")
+            if merged.empty:
+                logger.info(f"Week {week_str}: no picks passed model edge gate")
+                return merged
+        # Retain existing cover probability calc
         merged = _compute_cover_probabilities(merged)
-        merged = merged.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+        sort_adv_col = 'Blended_Adv' if 'Blended_Adv' in merged.columns else 'Overall_Adv'
+        merged = merged.sort_values(by=['Pick_Edge', sort_adv_col], ascending=[False, False])
         # Enforce max picks per week
         if len(merged) > MAX_PICKS_PER_WEEK:
             merged = merged.head(MAX_PICKS_PER_WEEK)
@@ -449,8 +550,10 @@ def generate_week_picks(week):
         output_cols = [
             'WEEK', 'Home_Team', 'Away_Team', 'Home_Line_Close', 'Away_Line_Close', 'Home_Odds_Close', 'Away_Odds_Close',
             'Game_Pick', 'Overall_Adv', 'Offense_Adv', 'Defense_Adv',
-            'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig',
+            'Overall_Adv_sig', 'Offense_Adv_sig', 'Defense_Adv_sig', 'Blended_Adv_sig',
             'Pressure_Mismatch', 'Explosive_Pass_Mismatch', 'Script_Control_Mismatch',
+            'Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv',
+            'Expected_Margin','Cover_Prob','Model_Edge','Confidence_Score',
             'Home_Win_Prob', 'Away_Win_Prob', 'Home_ML_Implied', 'Away_ML_Implied', 'Pick_Prob', 'Pick_Implied_Prob', 'Pick_Edge', 'Pick_Cover_Prob'
         ]
         for c in output_cols:
@@ -460,6 +563,8 @@ def generate_week_picks(week):
 
         # Save CSV (optional)
         output_path = f"{config.DATA_DIR}/picks/WEEK{week_str}.csv"
+        # Round numeric columns before saving/returning
+        picks_df = _round_numeric_cols(picks_df, 3)
         picks_df.to_csv(output_path, index=False)
         logger.info(f"Week {week_str}: picks saved to {output_path}")
         return picks_df
@@ -468,6 +573,42 @@ def generate_week_picks(week):
         return pd.DataFrame()
     finally:
         conn.close()
+
+
+def _attach_advanced_matchup_features(conn, df: pd.DataFrame, week_int: int) -> pd.DataFrame:
+    """Join matchup_features by Home/Away for the current season/week and compute normalization and blended advantage."""
+    try:
+        season = datetime.now().year
+        feats = pd.read_sql_query(
+            "SELECT Home_Team, Away_Team, off_comp_diff AS Off_Comp_Diff, def_comp_diff AS Def_Comp_Diff, net_composite AS Net_Composite "
+            "FROM matchup_features WHERE season=? AND week=?",
+            conn, params=[season, week_int]
+        )
+        if feats.empty:
+            # Add empty columns
+            for c in ['Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv']:
+                df[c] = np.nan
+            return df
+        # Normalize team codes
+        feats = normalize_df_team_cols(feats, ['Home_Team','Away_Team'])
+        merged = df.merge(feats, on=['Home_Team','Away_Team'], how='left')
+        # Normalize Net_Composite within week (z-score)
+        mu = merged['Net_Composite'].mean(skipna=True)
+        sd = merged['Net_Composite'].std(skipna=True)
+        if sd and sd > 0:
+            merged['Net_Composite_norm'] = (merged['Net_Composite'] - mu) / sd
+        else:
+            merged['Net_Composite_norm'] = 0.0
+        # Blended advantage
+        alpha = Settings.BLEND_ALPHA
+        merged['Blended_Adv'] = alpha * merged['Overall_Adv'].astype(float) + (1 - alpha) * merged['Net_Composite_norm'].astype(float)
+        return merged
+    except Exception as e:
+        logging.warning(f"Failed to attach advanced matchup features for week {week_int}: {e}")
+        for c in ['Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv']:
+            if c not in df.columns:
+                df[c] = np.nan
+        return df
 
 
 if __name__ == '__main__':

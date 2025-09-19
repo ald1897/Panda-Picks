@@ -1,924 +1,298 @@
+"""Advanced NFL stats collection & composite scoring (week-aware).
+Minimal clean implementation supporting Phase 0-1.
 """
-Advanced NFL Stats Collection and Analysis Module
-
-This module collects advanced offensive and defensive statistics through web scraping from Sumer Sports,
-processes them to create composite scores, and stores the data in an SQLite database.
-The processed data can be used for NFL game prediction and analysis.
-
-Features:
-- Web scrapes offensive and defensive stats from Sumer Sports website with advanced browser spoofing
-- Cleans and standardizes raw statistics for NFL teams
-- Stores raw stats and composite scores separately
-- Handles error cases gracefully with retries and logging
-"""
-
-import requests
-import pandas as pd
-import numpy as np
-import sqlite3
-import logging
-import time
-import os
-import random
-import json
-import re
+from __future__ import annotations
+import requests, pandas as pd, numpy as np, sqlite3, logging, os, random, re, time
 from datetime import datetime
-from typing import Dict, List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
-# Try to import from the module, but fallback to direct connection if that fails
 try:
     from panda_picks.db.database import get_connection
-    from panda_picks import config
-except ImportError:
-    # Define a fallback function if the module import fails
+except ImportError:  # fallback
     def get_connection():
-        # Try the main database path first
-        main_db_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'database', 'nfl_data.db')
-        if os.path.exists(main_db_path):
-            print(f"Using database at: {os.path.abspath(main_db_path)}")
-            return sqlite3.connect(main_db_path)
+        db_path = os.path.join(os.path.dirname(__file__), '..', '..', 'database', 'nfl_data.db')
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        return sqlite3.connect(db_path)
 
-        # Fallback to the secondary database path
-        secondary_db_path = os.path.join(os.path.dirname(__file__), '..', 'nfl_data.db')
-        if os.path.exists(secondary_db_path):
-            print(f"Using database at: {os.path.abspath(secondary_db_path)}")
-            return sqlite3.connect(secondary_db_path)
-
-        # If neither exists, create in the main location
-        os.makedirs(os.path.dirname(main_db_path), exist_ok=True)
-        print(f"Creating new database at: {os.path.abspath(main_db_path)}")
-        return sqlite3.connect(main_db_path)
-
-# Configure logging - write to both file and console
 log_file = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'panda_picks.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()  # This will output logs to console as well
-    ]
-)
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(name)s - %(message)s',
+                    handlers=[logging.FileHandler(log_file), logging.StreamHandler()])
 logger = logging.getLogger('advanced_stats')
 
-# Statistic weights for composite score calculation
 WEIGHTS = {
     'offense': {
-        'epa_per_play': 30,        # Overall offensive efficiency (highest weight)
-        'epa_per_pass': 20,        # Passing efficiency (very important)
-        'epa_per_rush': 10,        # Rushing efficiency (important but less than passing)
-        'Success %': 15,           # Success rate (important contextual metric)
-        'Comp %': 5,               # Completion percentage
-        'YAC EPA/Att': 8,          # Value from yards after catch
-        'ADoT': 3,                 # Average depth of target
-        'Eckel %': 10,             # Drive success (reaching scoring position)
-        'PROE': 3,                 # Pass Rate Over Expected (play-calling tendencies)
-        'Sack %': -5,              # Negative impact of sacks (negative weight)
-        'Scramble %': 2,           # Scrambling ability
-        'Int %': -7                # Negative impact of interceptions (negative weight)
+        'epa_per_play': 30,
+        'epa_per_pass': 20,
+        'epa_per_rush': 10,
+        'Success %': 15,
+        'Comp %': 5,
+        'YAC EPA/Att': 8,
+        'ADoT': 3,
+        'Eckel %': 10,
+        'PROE': 3,
+        'Sack %': -5,
+        'Scramble %': 2,
+        'Int %': -7
     },
     'defense': {
-        'epa_per_play': -30,       # Overall defensive efficiency (negative because lower is better for defense)
-        'epa_per_pass': -20,       # Pass defense efficiency
-        'epa_per_rush': -10,       # Rush defense efficiency
-        'Success %': -15,          # Success rate allowed (negative because lower is better)
-        'Comp %': -5,              # Completion percentage allowed
-        'YAC EPA/Att': -8,         # YAC allowed
-        'ADoT': 2,                 # Higher depth of target often means better coverage underneath
-        'Eckel %': -10,            # Drive success allowed
-        'Sack %': 7,               # Positive impact of generating sacks
-        'Int %': 7,                # Positive impact of generating interceptions
-        'Pass Yards': -3,          # Pass yards allowed (minor factor)
-        'Rush Yards': -2           # Rush yards allowed (minor factor)
+        'epa_per_play': -30,
+        'epa_per_pass': -20,
+        'epa_per_rush': -10,
+        'Success %': -15,
+        'Comp %': -5,
+        'YAC EPA/Att': -8,
+        'ADoT': 2,
+        'Eckel %': -10,
+        'Sack %': 7,
+        'Int %': 7,
+        'Pass Yards': -3,
+        'Rush Yards': -2
     }
 }
 
-# Web scraping URLs
 SCRAPE_URLS = {
-    'offense': "https://sumersports.com/teams/offensive/",
-    'defense': "https://sumersports.com/teams/defensive/"
+    'offense': 'https://sumersports.com/teams/offensive/',
+    'defense': 'https://sumersports.com/teams/defensive/'
 }
 
-# Team name standardization mapping
-TEAM_NAME_MAP = {
-    'CLE': 'CLV',
-    'ARI': 'ARZ',
-    'LAR': 'LA',
-    'JAC': 'JAX',
-    'WSH': 'WAS',
-    'LV': 'LVR'
+TEAM_NAME_MAP = {'CLE':'CLV','ARI':'ARZ','LAR':'LA','JAC':'JAX','WSH':'WAS','LV':'LVR'}
+
+TEAM_ABBR_MAP = {
+    'arizona cardinals':'ARZ', 'atlanta falcons':'ATL', 'baltimore ravens':'BLT', 'buffalo bills':'BUF',
+    'carolina panthers':'CAR', 'chicago bears':'CHI', 'cincinnati bengals':'CIN', 'cleveland browns':'CLV',
+    'dallas cowboys':'DAL', 'denver broncos':'DEN', 'detroit lions':'DET', 'green bay packers':'GB',
+    'houston texans':'HST', 'indianapolis colts':'IND', 'jacksonville jaguars':'JAX', 'kansas city chiefs':'KC',
+    'las vegas raiders':'LVR', 'los angeles chargers':'LAC', 'los angeles rams':'LA', 'miami dolphins':'MIA',
+    'minnesota vikings':'MIN', 'new england patriots':'NE', 'new orleans saints':'NO', 'new york giants':'NYG',
+    'new york jets':'NYJ', 'philadelphia eagles':'PHI', 'pittsburgh steelers':'PIT', 'san francisco 49ers':'SF',
+    'seattle seahawks':'SEA', 'tampa bay buccaneers':'TB', 'tennessee titans':'TEN', 'washington commanders':'WAS'
 }
 
-# Column name mappings (web scraped column name -> our database column name)
-COLUMN_MAPPING = {
-    'Team': 'team',
-    'EPA/Play': 'epa_per_play',
-    'EPA/Pass': 'epa_per_pass',
-    'EPA/Dropback': 'epa_per_dropback',
-    'YAC EPA': 'yac_epa',
-    'EPA/Rush': 'epa_per_rush',
-    'Comp%': 'comp_pct',
-    'Scramble Rate': 'scramble_rate',
-    'Pressure Rate': 'pressure_rate',
-    'INT%': 'int_rate',
-    'Sack%': 'sack_rate'
-}
-
-# Browser user agents for rotation
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) Gecko/20100101 Firefox/116.0'
 ]
 
-# Common cookies for browser simulation
-COOKIES_STRING = '_cs_c=0; _hp2_ses_props.2415233196=%7B%22r%22%3A%22https%3A%2F%2Fwww.google.com%2F%22%2C%22ts%22%3A1753412329569%2C%22d%22%3A%22sumersports.com%22%2C%22h%22%3A%22%2Fteams%2Fdefensive%2F%22%7D; _vcrcs=1.1753412652.3600.NmMwYzcyMTUyNzllM2Q4MTI0Y2RiNzI4MDJhZWQ4NjA=.066c163b6f9b429dffe7add196a3805a'
+COLUMN_MAPPING = {  # only map what we expect; unknown cols retained
+    'Team':'team', 'EPA/Play':'epa_per_play', 'EPA/Pass':'epa_per_pass', 'EPA/Rush':'epa_per_rush',
+    'Comp%':'Comp %', 'INT%':'Int %', 'Sack%':'Sack %'
+}
 
 class AdvancedStatsCollector:
-    """
-    Collects and processes advanced NFL team statistics.
-    """
-
-    def __init__(self, season: int = datetime.now().year):
-        """
-        Initialize the stats collector.
-
-        Args:
-            season: NFL season year (default: current year)
-        """
+    def __init__(self, season: int, week: Optional[int] = None):
         self.season = season
-        try:
-            self.conn = get_connection()
-            # Test the database connection
-            cursor = self.conn.cursor()
-            cursor.execute("PRAGMA table_info(advanced_stats)")
-            tables = cursor.fetchall()
-            logger.info(f"Connected to database. Found table schema: {tables}")
-        except Exception as e:
-            logger.error(f"Failed to connect to database: {str(e)}")
-            print(f"Error connecting to database: {str(e)}")
-            raise
+        self.week = week if week is not None else 1
+        self.conn = get_connection()
+        self.session = self._create_session()
 
-        self.session = self._create_browser_session()
+    def __enter__(self): return self
+    def __exit__(self, *exc):
+        try: self.conn.close()
+        except: pass
 
-    def _create_browser_session(self) -> requests.Session:
-        """
-        Create a browser-like session with proper headers and cookies.
+    def _create_session(self) -> requests.Session:
+        s = requests.Session()
+        s.headers.update({'User-Agent': random.choice(USER_AGENTS), 'Accept':'text/html'})
+        return s
 
-        Returns:
-            Configured requests.Session object
-        """
-        session = requests.Session()
+    def _referrer(self, url: str) -> str:
+        p = urlparse(url)
+        return f"{p.scheme}://{p.netloc}/"
 
-        # Set a realistic user agent
-        user_agent = random.choice(USER_AGENTS)
-
-        # Set headers to mimic a real browser
-        session.headers.update({
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'Cache-Control': 'max-age=0',
-        })
-
-        # Parse and set cookies
-        cookies_dict = {}
-        for cookie_part in COOKIES_STRING.split('; '):
-            if '=' in cookie_part:
-                name, value = cookie_part.split('=', 1)
-                cookies_dict[name] = value
-
-        # Add cookies to the session
-        session.cookies.update(cookies_dict)
-
-        return session
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.conn:
-            self.conn.close()
-
-    def _get_referrer(self, url: str) -> str:
-        """
-        Generate a plausible referrer URL for the given URL.
-
-        Args:
-            url: Target URL
-
-        Returns:
-            Referrer URL
-        """
-        parsed_url = urlparse(url)
-        domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-
-        # Possible referrers
-        referrers = [
-            f"{domain}/",  # Homepage
-            "https://www.google.com/",  # Google search
-            f"{domain}/teams/",  # Teams page
-        ]
-
-        # Use the most specific referrer for the defensive page
-        if "defensive" in url:
-            return f"{domain}/teams/defensive/personnel-tendency/"
-        elif "offensive" in url:
-            return f"{domain}/teams/offensive/personnel-tendency/"
-        else:
-            return random.choice(referrers)
-
-    def scrape_team_data(self, stats_type: str, max_retries: int = 3) -> Optional[pd.DataFrame]:
-        """
-        Scrape team statistics data from Sumer Sports website.
-
-        Args:
-            stats_type: Type of statistics ('offense' or 'defense')
-            max_retries: Maximum number of retry attempts
-
-        Returns:
-            DataFrame containing the scraped statistics data or None if scraping failed
-        """
-        url = SCRAPE_URLS.get(stats_type)
+    def scrape_team_data(self, kind: str, retries: int = 3) -> Optional[pd.DataFrame]:
+        url = SCRAPE_URLS.get(kind)
         if not url:
-            logger.error(f"Invalid stats type: {stats_type}")
             return None
-
-        # First, visit the homepage to establish session and cookies
-        try:
-            logger.info("Visiting homepage to establish session")
-            self.session.get("https://sumersports.com/", timeout=10)
-            time.sleep(2)  # Pause to be more human-like
-        except Exception as e:
-            logger.warning(f"Failed to visit homepage: {e}")
-
-        retries = 0
-        while retries < max_retries:
+        for attempt in range(retries):
             try:
-                # Add specific headers for this request
-                referrer = self._get_referrer(url)
-                self.session.headers.update({'Referer': referrer})
-
-                # Slight delay between requests (more human-like)
-                time.sleep(1 + random.random())
-
-                logger.info(f"Scraping {stats_type} data from {url}")
-                response = self.session.get(url, timeout=15)
-                response.raise_for_status()
-
-                if 'text/html' not in response.headers.get('Content-Type', ''):
-                    logger.warning(f"Unexpected content type: {response.headers.get('Content-Type')}")
-
-                # Save response for debugging
-                debug_file = os.path.join(os.path.dirname(__file__), f"{stats_type}_response.html")
-                with open(debug_file, 'w', encoding='utf-8') as f:
-                    f.write(response.text)
-                logger.info(f"Saved raw HTML response to {debug_file}")
-
-                # Parse HTML
-                soup = BeautifulSoup(response.text, 'html.parser')
-
-                # Find the main data table - more robust selector
-                tables = soup.find_all('table')
-                if not tables:
-                    logger.error(f"No tables found on {url}")
-                    with open(debug_file, 'a', encoding='utf-8') as f:
-                        f.write("\n\n--- No tables found in HTML ---\n")
-                    retries += 1
-                    time.sleep(5)  # Longer delay after failure
-                    continue
-
-                table = tables[0]  # Use the first table found
-
-                # Try to find headers - more robust approach
-                headers = []
-                header_rows = table.find_all('tr')
-                for row in header_rows:
-                    th_elements = row.find_all(['th', 'td'])  # Look for th or td elements
-                    if th_elements:
-                        headers = [th.text.strip() for th in th_elements]
-                        if headers and len(headers) > 2:  # Ensure we have reasonable headers
-                            break
-
-                if not headers:
-                    logger.error("Could not find headers in table")
-                    with open(debug_file, 'a', encoding='utf-8') as f:
-                        f.write("\n\n--- No headers found in table ---\n")
-                    retries += 1
-                    time.sleep(5)
-                    continue
-
-                # Extract data rows - more robust approach
+                self.session.headers['Referer'] = self._referrer(url)
+                time.sleep(0.5 + random.random())
+                r = self.session.get(url, timeout=15)
+                r.raise_for_status()
+                soup = BeautifulSoup(r.text, 'html.parser')
+                table = soup.find('table')
+                if not table: continue
+                headers = [th.get_text(strip=True) for th in table.find_all('th')]
+                if not headers:  # fallback first row
+                    first_tr = table.find('tr')
+                    if first_tr:
+                        headers = [td.get_text(strip=True) for td in first_tr.find_all('td')]
                 rows = []
-                body = table.find('tbody') if table.find('tbody') else table
-                for tr in body.find_all('tr'):
-                    td_elements = tr.find_all('td')
-                    if td_elements and len(td_elements) > 2:  # Skip header rows
-                        row_data = [td.text.strip() for td in td_elements]
-                        if row_data and len(row_data) == len(headers):
-                            rows.append(row_data)
-
+                for tr in table.find_all('tr'):
+                    tds = tr.find_all('td')
+                    if len(tds) == len(headers) and len(headers) > 2:
+                        rows.append([td.get_text(strip=True) for td in tds])
                 if not rows:
-                    logger.error("No data rows found in table")
-                    with open(debug_file, 'a', encoding='utf-8') as f:
-                        f.write("\n\n--- No data rows found in table ---\n")
-                    retries += 1
-                    time.sleep(5)
                     continue
-
-                # Create DataFrame
                 df = pd.DataFrame(rows, columns=headers)
-
-                # Clean and transform data
-                df = self._clean_scraped_data(df, stats_type)
-
-                if df.empty:
-                    logger.error("DataFrame is empty after cleaning")
-                    retries += 1
-                    time.sleep(5)
-                    continue
-
-                logger.info(f"Successfully scraped {stats_type} data with {len(df)} rows")
-                return df
-
-            except requests.exceptions.RequestException as e:
-                retries += 1
-                wait_time = 2 ** retries  # Exponential backoff
-                logger.warning(f"Request failed: {e}. Retry {retries}/{max_retries} in {wait_time}s")
-                time.sleep(wait_time)
-
-                # Create a new session with fresh cookies on failure
-                self.session = self._create_browser_session()
-
+                return self._clean(df, kind)
             except Exception as e:
-                logger.error(f"Unexpected error scraping {stats_type} data: {str(e)}")
-                retries += 1
-                wait_time = 2 ** retries
-                logger.warning(f"Retrying {retries}/{max_retries} in {wait_time}s")
-                time.sleep(wait_time)
-
-                # Create a new session with fresh cookies on failure
-                self.session = self._create_browser_session()
-
-        logger.error(f"Failed to scrape {stats_type} data from {url} after {max_retries} attempts")
+                logger.warning(f"{kind} scrape attempt {attempt+1} failed: {e}")
+        logger.error(f"Failed to scrape {kind} stats")
         return None
 
-    def _clean_scraped_data(self, df: pd.DataFrame, stats_type: str) -> pd.DataFrame:
-        """
-        Clean and transform scraped data into the format needed for analysis.
+    def _clean(self, df: pd.DataFrame, kind: str) -> pd.DataFrame:
+        if df.empty: return df
+        out = df.copy()
+        for src,dst in COLUMN_MAPPING.items():
+            if src in out.columns:
+                out.rename(columns={src: dst}, inplace=True)
+        team_col = None
+        for c in out.columns:
+            if c.lower() in ('team','team name','name'): team_col = c; break
+        if not team_col: return pd.DataFrame()
+        out['team'] = out[team_col].astype(str).apply(lambda x: re.sub(r'^\d+\.\s*','', x.strip()))
+        # Map full names to abbreviations
+        lower_vals = out['team'].str.lower()
+        mapped = []
+        for lv, original in zip(lower_vals, out['team']):
+            abbr = TEAM_ABBR_MAP.get(lv)
+            if not abbr:
+                # Try partial match on first word if full not found
+                first = lv.split()[0]
+                candidates = [v for k,v in TEAM_ABBR_MAP.items() if k.startswith(first)]
+                abbr = candidates[0] if candidates else original.upper()[:3]
+            mapped.append(abbr)
+        out['TEAM'] = mapped
+        out.drop(columns=[team_col, 'team'], errors='ignore', inplace=True)
+        # numeric conversions (% handling)
+        for c in list(out.columns):
+            if c == 'TEAM': continue
+            if out[c].astype(str).str.contains('%').any():
+                out[c] = out[c].astype(str).str.replace('%','', regex=False)
+            out[c] = pd.to_numeric(out[c], errors='ignore')
+        out['season'] = self.season
+        out['week'] = self.week
+        out['type'] = kind
+        return out
 
-        Args:
-            df: Raw scraped DataFrame
-            stats_type: Type of statistics ('offense' or 'defense')
+    def normalize_dataframe(self, df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+        norm = df.copy()
+        for c in cols:
+            if c in df.columns:
+                mx, mn = df[c].max(), df[c].min()
+                norm[c] = 0.5 if mx == mn else (df[c]-mn)/(mx-mn)
+        return norm
 
-        Returns:
-            Cleaned DataFrame
-        """
-        # Handle empty DataFrame
-        if df.empty:
-            logger.error(f"Received empty DataFrame for {stats_type}")
-            return pd.DataFrame()
+    def calculate_composite_scores(self, stats_df: pd.DataFrame, kind: str) -> pd.DataFrame:
+        if stats_df.empty: return stats_df
+        weights = WEIGHTS.get(kind, {})
+        cols = [c for c in weights if c in stats_df.columns]
+        if not cols:
+            stats_df['composite_score']=0; stats_df['z_score']=0; return stats_df
+        norm = self.normalize_dataframe(stats_df, cols)
+        inverse = {'int_rate','sack_rate','Int %','Sack %'}
+        for c in cols:
+            if kind=='offense' and c in inverse:
+                norm[c] = 1 - norm[c]
+            elif kind=='defense' and c not in inverse:
+                norm[c] = 1 - norm[c]
+        comp_cols=[]
+        for c in cols:
+            wc = f"{c}_w"; norm[wc]=norm[c]*weights[c]; comp_cols.append(wc)
+        out = stats_df.copy()
+        out['composite_score'] = norm[comp_cols].sum(axis=1)
+        mu = out['composite_score'].mean(); sd = out['composite_score'].std()
+        out['z_score'] = (out['composite_score']-mu)/sd if sd>0 else 0
+        out['last_updated'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        return out
 
-        # Make a copy to avoid modifying the original
-        result = df.copy()
-
+    def save_composite_scores(self, df: pd.DataFrame) -> bool:
         try:
-            # Log the original columns for debugging
-            logger.info(f"Original columns: {result.columns.tolist()}")
-
-            # Rename columns according to our mapping
-            column_renamed = False
-            for original, new_name in COLUMN_MAPPING.items():
-                if original in result.columns:
-                    result.rename(columns={original: new_name}, inplace=True)
-                    column_renamed = True
-
-            if not column_renamed:
-                logger.warning("No columns were renamed - column names might not match expected format")
-
-            # Ensure team column exists
-            team_col = None
-            for col in result.columns:
-                if col.lower() in ['team', 'team name', 'name', 'team abbr', 'team_abbr']:
-                    team_col = col
-                    break
-
-            if team_col:
-                logger.info(f"Found team column: {team_col}")
-                result.rename(columns={team_col: 'team'}, inplace=True)
-
-            if 'team' not in result.columns:
-                logger.error(f"Team column not found in scraped {stats_type} data")
-                logger.info(f"Available columns: {result.columns.tolist()}")
-                return pd.DataFrame()
-
-            # Clean team names - remove leading numbers and period (e.g., "1. Baltimore Ravens" -> "Baltimore Ravens")
-            result['team'] = result['team'].astype(str).apply(lambda x: re.sub(r'^\d+\.\s*', '', x.strip()))
-
-            # Log team names for debugging
-            logger.info(f"Team names (after cleaning): {result['team'].tolist()}")
-
-            # list the columns after renaming
-            logger.info(f"Columns after renaming: {result.columns.tolist()}")
-
-            # Standardize team names but ensure there is only one 'team' column
-            if 'team' in result.columns:
-                result['team'] = result['team'].replace(TEAM_NAME_MAP)
-                result['TEAM'] = result['team']
-
-            # Make sure 'TEAM' column exists and 'team' column is dropped
-            if 'TEAM' not in result.columns:
-                logger.error("TEAM column not found after renaming team names")
-                return pd.DataFrame()
-            if 'team' in result.columns:
-                result.drop(columns=['team'], inplace=True)
-
-            # Make sure 'Season' column exists and 'season' column is dropped
-            if 'Season' in result.columns:
-                result.rename(columns={'Season': 'season'}, inplace=True)
-            if 'season' not in result.columns:
-                logger.error("season column not found in scraped data")
-                return pd.DataFrame()
-            if 'season' in result.columns:
-                result.drop(columns=['season'], inplace=True)
-            # Log columns after standardizing
-
-
-
-            logger.info(f"Columns after standardizing: {result.columns.tolist()}")
-
-
-        # Convert percentage strings to floats
-            for col in result.columns:
-                if col == 'team' or col == 'TEAM':
-                    continue
-
-                if result[col].dtype == 'object':
-                    # Check if the column contains percentage values
-                    if result[col].astype(str).str.contains('%').any():
-                        # Remove % and convert to float
-                        result[col] = result[col].astype(str).str.replace('%', '').astype(float) / 100
+            cur = self.conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS advanced_stats (season INTEGER, week INTEGER, type TEXT, TEAM TEXT, composite_score REAL, z_score REAL, last_updated TEXT, PRIMARY KEY (season, week, type, TEAM))")
+            base = {'season','week','type','TEAM','composite_score','z_score','last_updated'}
+            df_db = df.copy()
+            # Sanitize additional column names (only letters, numbers, underscore)
+            import re
+            name_map = {}
+            existing_safe = set(base)
+            def make_safe(c: str) -> str:
+                safe = re.sub(r'[^A-Za-z0-9_]', '_', c)
+                safe = re.sub(r'_+', '_', safe).strip('_')
+                if not safe:
+                    safe = 'col'
+                orig = safe
+                i = 1
+                while safe in existing_safe:
+                    safe = f"{orig}_{i}"; i += 1
+                existing_safe.add(safe)
+                return safe
+            for col in list(df_db.columns):
+                if col in base: continue
+                safe = make_safe(col)
+                name_map[col] = safe
+                if safe != col:
+                    df_db[safe] = df_db[col]
+            # Add new columns to table if needed
+            cur.execute("PRAGMA table_info(advanced_stats)")
+            existing_cols = {r[1] for r in cur.fetchall()}
+            for col, safe in name_map.items():
+                if safe not in existing_cols:
+                    series = df_db[col] if col in df_db.columns else df_db[safe]
+                    if pd.api.types.is_float_dtype(series) or pd.api.types.is_integer_dtype(series):
+                        col_type = 'REAL'
                     else:
-                        # Try to convert to numeric if possible
-                        try:
-                            result[col] = pd.to_numeric(result[col], errors='coerce')
-                        except:
-                            pass
-
-            # Add season information
-            result['season'] = self.season
-
-            # Add type information
-            result['type'] = stats_type
-
-            logger.info(f"Columns after cleaning: {result.columns.tolist()}")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error cleaning scraped {stats_type} data: {str(e)}")
-            return pd.DataFrame()
-
-    def extract_raw_stats(self) -> Dict[str, pd.DataFrame]:
-        """
-        Extract and store raw stats for both offense and defense without calculating composites.
-
-        Returns:
-            Dictionary with raw offensive and defensive stats DataFrames
-        """
-        results = {}
-
-        # Extract offensive stats
-        off_df = self.scrape_team_data('offense')
-        if off_df is not None:
-            results['offense'] = off_df
-            # Save raw stats to database
-            self._save_raw_stats(off_df, 'raw_stats', if_exists='replace')
-            # Export to CSV
-            self._export_raw_stats_to_csv(off_df, 'offense')
-
-        # Extract defensive stats
-        def_df = self.scrape_team_data('defense')
-        if def_df is not None:
-            results['defense'] = def_df
-            # Save raw stats to database (append to the same table as offensive stats)
-            self._save_raw_stats(def_df, 'raw_stats', if_exists='append')
-            # Export to CSV
-            self._export_raw_stats_to_csv(def_df, 'defense')
-
-        return results
-
-    def _save_raw_stats(self, df: pd.DataFrame, table_name: str, if_exists: str = 'append') -> bool:
-        """
-        Save raw statistics data to database.
-
-        Args:
-            df: DataFrame to save
-            table_name: Name of the table to save to
-            if_exists: How to behave if the table exists ('fail', 'replace', 'append')
-
-        Returns:
-            Success status
-        """
-        try:
-            # Add timestamp
-            df['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            # Create a copy of the dataframe to avoid modifying the original
-            df_to_save = df.copy()
-
-            # For offense stats (replace mode), just save the data directly
-            if if_exists == 'replace':
-                print(f"Saving {len(df_to_save)} records to {table_name} table...")
-                df_to_save.to_sql(table_name, self.conn, if_exists='replace', index=False)
-                self.conn.commit()
-                logger.info(f"Successfully saved {len(df_to_save)} raw stats records to {table_name} table")
-                return True
-
-            # For defensive stats (append mode), we need to be more careful
-            # Log the columns for debugging
-            logger.info(f"Columns before saving: {df_to_save.columns.tolist()}")
-
-            # Check if table exists and get the schema
-            cursor = self.conn.cursor()
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
-            existing_columns = [description[0] for description in cursor.description]
-            logger.info(f"Existing table columns: {existing_columns}")
-
-            # Check if the table has records
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            record_count = cursor.fetchone()[0]
-
-            if record_count == 0:
-                # Table exists but is empty, so we can just write directly
-                df_to_save.to_sql(table_name, self.conn, if_exists='replace', index=False)
-                self.conn.commit()
-                logger.info(f"Successfully saved {len(df_to_save)} records to empty {table_name} table")
-                return True
-
-            # For appending to a non-empty table, we need to handle the column differences
-            # Create a new DataFrame with the same columns as the existing table
-            new_df = pd.DataFrame(columns=existing_columns)
-
-            # Map columns from our data to the existing table schema
-            for col in existing_columns:
-                if col in df_to_save.columns:
-                    new_df[col] = df_to_save[col]
-                else:
-                    # Fill in NULL for columns we don't have
-                    new_df[col] = None
-
-            # For our columns that don't exist in the target table, add them
-            missing_cols = [col for col in df_to_save.columns if col not in existing_columns]
-            for col in missing_cols:
-                # Add new columns to the database table
-                data_type = self._get_sqlite_type(df_to_save[col].dtype)
-                try:
-                    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN '{col}' {data_type}")
-                    self.conn.commit()
-                    # Now add the data to our target dataframe
-                    new_df[col] = df_to_save[col]
-                except Exception as e:
-                    logger.warning(f"Could not add column {col}: {str(e)}")
-
-            # Now append the data
-            print(f"Saving {len(new_df)} records to {table_name} table...")
-            new_df.to_sql(table_name, self.conn, if_exists='append', index=False)
+                        col_type = 'TEXT'
+                    try:
+                        cur.execute(f'ALTER TABLE advanced_stats ADD COLUMN "{safe}" {col_type}')
+                    except Exception:
+                        pass
             self.conn.commit()
-            logger.info(f"Successfully saved {len(new_df)} raw stats records to {table_name} table")
+            # Refresh columns
+            cur.execute("PRAGMA table_info(advanced_stats)")
+            existing_cols = {r[1] for r in cur.fetchall()}
+            insert_cols = [c for c in base] + [safe for safe in name_map.values() if safe in existing_cols]
+            placeholders = ','.join(['?']*len(insert_cols))
+            stmt = f"INSERT OR REPLACE INTO advanced_stats ({','.join(insert_cols)}) VALUES ({placeholders})"
+            rows = []
+            for _, r in df_db.iterrows():
+                vals = []
+                for c in insert_cols:
+                    v = r.get(c)
+                    if pd.isna(v):
+                        vals.append(None)
+                    else:
+                        if isinstance(v,(np.floating,np.integer)):
+                            vals.append(float(v))
+                        else:
+                            vals.append(v)
+                rows.append(tuple(vals))
+            cur.executemany(stmt, rows)
+            self.conn.commit()
+            logger.info(f"Saved {len(rows)} {df['type'].iloc[0] if len(df)>0 else ''} composite rows (week={self.week})")
             return True
-
         except Exception as e:
-            logger.error(f"Database error saving raw stats: {str(e)}")
-            print(f"Error saving to database: {str(e)}")
+            logger.error(f"save_composite_scores error: {e}")
             return False
 
-    def _get_sqlite_type(self, dtype):
-        """
-        Map pandas dtype to SQLite data type
+    def process_all_stats(self) -> Tuple[Dict[str,pd.DataFrame], Dict[str,pd.DataFrame]]:
+        raw: Dict[str,pd.DataFrame] = {}
+        comp: Dict[str,pd.DataFrame] = {}
+        for kind in ('offense','defense'):
+            df = self.scrape_team_data(kind)
+            if df is None or df.empty: continue
+            raw[kind]=df
+            cdf = self.calculate_composite_scores(df, kind)
+            comp[kind]=cdf
+            self.save_composite_scores(cdf)
+        return raw, comp
 
-        Args:
-            dtype: Pandas data type
-
-        Returns:
-            SQLite data type string
-        """
-        if pd.api.types.is_integer_dtype(dtype):
-            return "INTEGER"
-        elif pd.api.types.is_float_dtype(dtype):
-            return "REAL"
-        elif pd.api.types.is_datetime64_any_dtype(dtype):
-            return "TEXT"
-        else:
-            return "TEXT"
-
-    def _export_raw_stats_to_csv(self, df: pd.DataFrame, stats_type: str, output_dir: str = None) -> str:
-        """
-        Export raw statistics to CSV file.
-
-        Args:
-            df: DataFrame to export
-            stats_type: Type of statistics ('offense' or 'defense')
-            output_dir: Directory to save CSV files (default: data folder)
-
-        Returns:
-            Path to the saved CSV file
-        """
-        if output_dir is None:
-            output_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
-
-        os.makedirs(output_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime('%Y%m%d')
-        filepath = os.path.join(output_dir, f'{stats_type}_stats_{timestamp}.csv')
-
-        try:
-            df.to_csv(filepath, index=False)
-            logger.info(f"Exported raw {stats_type} stats to {filepath}")
-            return filepath
-        except Exception as e:
-            logger.error(f"Error exporting {stats_type} stats to CSV: {str(e)}")
-            return ""
-
-    def calculate_composite_scores(self, stats_df: pd.DataFrame, stats_type: str) -> pd.DataFrame:
-        """
-        Calculate composite scores for a stats DataFrame.
-        This is now separated from the extraction process.
-
-        Args:
-            stats_df: DataFrame containing raw statistics
-            stats_type: Type of statistics ('offense' or 'defense')
-
-        Returns:
-            DataFrame with added composite scores
-        """
-        result_df = stats_df.copy()
-
-        # Get weights for this stats type
-        weights = WEIGHTS.get(stats_type, {})
-        if not weights:
-            logger.error(f"No weights defined for stats type: {stats_type}")
-            result_df['composite_score'] = 0
-            return result_df
-
-        # Get list of stats that exist in the dataframe
-        available_stats = [col for col in weights.keys() if col in stats_df.columns]
-
-        if not available_stats:
-            logger.error(f"No valid stats columns found in dataframe for {stats_type}")
-            result_df['composite_score'] = 0
-            return result_df
-
-        # Normalize available stats
-        normalized_df = self.normalize_dataframe(stats_df, available_stats)
-
-        # Adjust metrics where lower/higher values are better
-        inverse_metrics = ['int_rate', 'sack_rate']
-        for column in available_stats:
-            if stats_type == 'offense' and column in inverse_metrics:
-                # For offense, lower int_rate and sack_rate are better
-                normalized_df[column] = 1 - normalized_df[column]
-            elif stats_type == 'defense' and column not in inverse_metrics:
-                # For defense, lower values are better except for int_rate and sack_rate
-                normalized_df[column] = 1 - normalized_df[column]
-
-        # Apply weights
-        weighted_columns = []
-        for column in available_stats:
-            weighted_column = f"{column}_weighted"
-            normalized_df[weighted_column] = normalized_df[column] * weights[column]
-            weighted_columns.append(weighted_column)
-
-        # Sum weighted values for composite score
-        result_df['composite_score'] = normalized_df[weighted_columns].sum(axis=1)
-
-        # Add z-score to see how many standard deviations from mean
-        mean = result_df['composite_score'].mean()
-        std = result_df['composite_score'].std()
-        if std > 0:  # Avoid division by zero
-            result_df['z_score'] = (result_df['composite_score'] - mean) / std
-        else:
-            result_df['z_score'] = 0
-
-        # Create unique ID
-        result_df['unique_id'] = result_df['TEAM'] + '_' + stats_type
-
-        # Add timestamp
-        result_df['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        return result_df
-
-    def normalize_dataframe(self, df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
-        """
-        Normalize columns in a dataframe to values between 0 and 1.
-
-        Args:
-            df: Input dataframe
-            columns: Columns to normalize
-
-        Returns:
-            Dataframe with normalized columns
-        """
-        result = df.copy()
-        for column in columns:
-            if column in df.columns:
-                max_value = df[column].max()
-                min_value = df[column].min()
-
-                # Avoid division by zero
-                if max_value == min_value:
-                    result[column] = 0.5  # Neutral value if all teams have same stat
-                else:
-                    result[column] = (df[column] - min_value) / (max_value - min_value)
-            else:
-                logger.warning(f"Column {column} not found in dataframe")
-
-        return result
-
-    def save_composite_scores(self, df: pd.DataFrame, if_exists: str = 'append') -> bool:
-        """
-        Save composite scores to database.
-
-        Args:
-            df: DataFrame with composite scores
-            if_exists: How to behave if the table exists ('fail', 'replace', 'append')
-
-        Returns:
-            Success status
-        """
-        try:
-            print(f"Saving {len(df)} composite scores to database...")
-
-            # Create a copy of the dataframe to avoid modifying the original
-            df_to_save = df.copy()
-
-            # For offense stats (replace mode), just save the data directly
-            if if_exists == 'replace':
-                df_to_save.to_sql('advanced_stats', self.conn, if_exists='replace', index=False)
-                self.conn.commit()
-                logger.info(f"Successfully saved {len(df_to_save)} composite scores to database")
-                return True
-
-            # For defensive stats (append mode), we need to be more careful
-            # Check if table exists and get the schema
-            try:
-                cursor = self.conn.cursor()
-                cursor.execute("SELECT * FROM advanced_stats LIMIT 0")
-                existing_columns = [description[0] for description in cursor.description]
-                logger.info(f"Existing advanced_stats table columns: {existing_columns}")
-
-                # Check if the table has records
-                cursor.execute("SELECT COUNT(*) FROM advanced_stats")
-                record_count = cursor.fetchone()[0]
-
-                if record_count == 0:
-                    # Table exists but is empty, so we can just write directly
-                    df_to_save.to_sql('advanced_stats', self.conn, if_exists='replace', index=False)
-                    self.conn.commit()
-                    logger.info(f"Successfully saved {len(df_to_save)} composite scores to empty table")
-                    return True
-            except Exception as e:
-                # Table doesn't exist or other issue
-                logger.info(f"Creating new advanced_stats table: {str(e)}")
-                df_to_save.to_sql('advanced_stats', self.conn, if_exists='replace', index=False)
-                self.conn.commit()
-                logger.info(f"Created new advanced_stats table with {len(df_to_save)} records")
-                return True
-
-            # For appending to a non-empty table, we need to handle the column differences
-            # Create a new DataFrame with the same columns as the existing table
-            new_df = pd.DataFrame(columns=existing_columns)
-
-            # Map columns from our data to the existing table schema
-            for col in existing_columns:
-                if col in df_to_save.columns:
-                    new_df[col] = df_to_save[col]
-                else:
-                    # Fill in NULL for columns we don't have
-                    new_df[col] = None
-
-            # For our columns that don't exist in the target table, add them
-            missing_cols = [col for col in df_to_save.columns if col not in existing_columns]
-            for col in missing_cols:
-                # Add new columns to the database table
-                data_type = self._get_sqlite_type(df_to_save[col].dtype)
-                try:
-                    cursor.execute(f"ALTER TABLE advanced_stats ADD COLUMN '{col}' {data_type}")
-                    self.conn.commit()
-                    # Now add the data to our target dataframe
-                    new_df[col] = df_to_save[col]
-                except Exception as e:
-                    logger.warning(f"Could not add column {col} to advanced_stats: {str(e)}")
-
-            # Now append the data
-            new_df.to_sql('advanced_stats', self.conn, if_exists='append', index=False)
-            self.conn.commit()
-            logger.info(f"Successfully saved {len(new_df)} composite scores to database")
-            return True
-
-        except Exception as e:
-            logger.error(f"Database error saving composite scores: {str(e)}")
-            print(f"Error saving composite scores: {str(e)}")
-            return False
-
-    def process_all_stats(self) -> Tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
-        """
-        Process all stats: extract raw data and calculate composite scores.
-
-        Returns:
-            Tuple of dictionaries containing (raw_stats, composite_scores)
-        """
-        # Initialize empty dictionaries to avoid returning None
-        raw_stats = {}
-        composite_scores = {}
-
-        # First extract raw stats
-        offense_df = self.scrape_team_data('offense')
-        if offense_df is not None:
-            raw_stats['offense'] = offense_df
-            # Save raw stats to database - even if this fails, continue with the process
-            save_success = self._save_raw_stats(offense_df, 'raw_stats', if_exists='replace')
-            if not save_success:
-                logger.warning("Failed to save offensive stats to database, but continuing with processing")
-            # Export to CSV
-            self._export_raw_stats_to_csv(offense_df, 'offense')
-
-            # Calculate composite scores for offense
-            composite_df = self.calculate_composite_scores(offense_df, 'offense')
-            composite_scores['offense'] = composite_df
-
-            # Save composite scores - even if this fails, continue
-            save_success = self.save_composite_scores(composite_df, if_exists='replace')
-            if not save_success:
-                logger.warning("Failed to save offensive composite scores to database, but continuing with processing")
-
-        # Extract defensive stats
-        defense_df = self.scrape_team_data('defense')
-        if defense_df is not None:
-            raw_stats['defense'] = defense_df
-            # Save raw stats to database - even if this fails, continue with the process
-            save_success = self._save_raw_stats(defense_df, 'raw_stats', if_exists='append')
-            if not save_success:
-                logger.warning("Failed to save defensive stats to database, but continuing with processing")
-            # Export to CSV
-            self._export_raw_stats_to_csv(defense_df, 'defense')
-
-            # Calculate composite scores for defense
-            composite_df = self.calculate_composite_scores(defense_df, 'defense')
-            composite_scores['defense'] = composite_df
-
-            # Save composite scores - even if this fails, continue
-            save_success = self.save_composite_scores(composite_df, if_exists='append')
-            if not save_success:
-                logger.warning("Failed to save defensive composite scores to database, but continuing with processing")
-
-        return raw_stats, composite_scores
-
-def main():
-    """
-    Main function to collect and process advanced stats.
-    """
+def main(season: Optional[int]=None, week: Optional[int]=None):
+    season_v = season if season is not None else datetime.now().year
+    week_v = week if week is not None else 1
+    logger.info(f"Advanced stats run season={season_v} week={week_v}")
     try:
-        print("Starting advanced stats collection...")
-        logger.info("Starting advanced stats collection")
-
-        with AdvancedStatsCollector() as collector:
-            # Process all stats (extract raw data and calculate composites)
-            print("Collecting stats data...")
-            raw_stats, composite_scores = collector.process_all_stats()
-
-            if not raw_stats:
-                logger.error("Failed to collect any stats")
-                print("Failed to collect any stats")
-                return
-
-            # Log summary
-            logger.info(f"Successfully processed {len(raw_stats.get('offense', []))} offensive teams")
-            logger.info(f"Successfully processed {len(raw_stats.get('defense', []))} defensive teams")
-
-            print(f"Stats collection complete. Processed {len(raw_stats.get('offense', []))} offensive teams and {len(raw_stats.get('defense', []))} defensive teams")
-            print(f"Check '{os.path.join(os.path.dirname(__file__), '..', '..', '..', 'panda_picks.log')}' for details.")
-
+        with AdvancedStatsCollector(season_v, week_v) as c:
+            raw, comp = c.process_all_stats()
+            if not raw:
+                logger.warning("No advanced stats collected")
     except Exception as e:
-        logger.exception(f"Error in main function: {str(e)}")
-        print(f"Error in main function: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"advanced stats main error: {e}")
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
