@@ -1,6 +1,7 @@
 import pandas as pd
 from panda_picks.db.database import get_connection
 import logging
+import numpy as np
 
 
 class PickRepository:
@@ -10,7 +11,11 @@ class PickRepository:
         'Home_Win_Prob': 'REAL', 'Away_Win_Prob': 'REAL',
         'Home_ML_Implied': 'REAL', 'Away_ML_Implied': 'REAL',
         'Pick_Prob': 'REAL', 'Pick_Implied_Prob': 'REAL', 'Pick_Edge': 'REAL',
-        'Timestamp': 'TEXT'
+        'Timestamp': 'TEXT',
+        # Phase 2 advanced features
+        'Pressure_Mismatch': 'REAL', 'Explosive_Pass_Mismatch': 'REAL', 'Script_Control_Mismatch': 'REAL',
+        'Off_Comp_Diff': 'REAL','Def_Comp_Diff': 'REAL','Net_Composite': 'REAL','Net_Composite_norm': 'REAL','Blended_Adv': 'REAL',
+        'Blended_Adv_sig': 'TEXT'
     }
 
     def _ensure_columns(self, conn):
@@ -24,6 +29,15 @@ class PickRepository:
                 except Exception as e:
                     logging.warning(f"Could not add column {col} to picks: {e}")
         conn.commit()
+
+    def _round_numeric_cols(self, df: pd.DataFrame, decimals: int = 3) -> pd.DataFrame:
+        try:
+            num_cols = df.select_dtypes(include=[np.number]).columns
+            if len(num_cols) > 0:
+                df[num_cols] = df[num_cols].round(decimals)
+        except Exception:
+            pass
+        return df
 
     def save_picks(self, picks_df: pd.DataFrame, week: int) -> None:
         if picks_df.empty:
@@ -41,6 +55,8 @@ class PickRepository:
                 filtered_df['WEEK'] = filtered_df['WEEK'].apply(lambda _: week_key)
             else:
                 filtered_df['WEEK'] = week_key
+            # Round numeric columns before persisting
+            filtered_df = self._round_numeric_cols(filtered_df, 3)
             for home, away in zip(filtered_df['Home_Team'], filtered_df['Away_Team']):
                 cur.execute("DELETE FROM picks WHERE WEEK = ? AND Home_Team = ? AND Away_Team = ?", (week_key, home, away))
             filtered_df.to_sql('picks', conn, if_exists='append', index=False)

@@ -7,6 +7,8 @@ from panda_picks.data.repositories.pick_repository import PickRepository
 from panda_picks.config.settings import Settings
 from panda_picks.analysis.utils.probability import calculate_win_probability
 from panda_picks.analysis.picks import ADVANTAGE_BASE_COLUMNS  # reuse existing logic for now
+from panda_picks.db.database import get_connection
+from panda_picks.utils import normalize_df_team_cols
 
 
 def _american_to_decimal(odds):
@@ -39,8 +41,7 @@ def _implied_probs(home_odds, away_odds):
 class PickService:
     """Service layer for generating picks. Bridges old logic and new architecture.
 
-    Selection rule (original): Pick a side if ANY of the primary advantages (Overall, Offense, Defense)
-    is significant for that side and there is no opposing significant signal.
+    Selection rule: Prefer Blended_Adv significance with Offense/Defense; if blended missing, fall back to Overall_Adv.
     """
 
     def __init__(self, spread_repo=None, grade_repo=None, pick_repo=None, settings=Settings):
@@ -49,11 +50,41 @@ class PickService:
         self.pick_repo = pick_repo or PickRepository()
         self.settings = settings
 
+    def _attach_phase2_features(self, df: pd.DataFrame, week: int) -> pd.DataFrame:
+        """Join matchup_features and compute normalized Net_Composite and Blended_Adv."""
+        try:
+            season = datetime.now().year
+            with get_connection() as conn:
+                feats = pd.read_sql_query(
+                    "SELECT Home_Team, Away_Team, off_comp_diff AS Off_Comp_Diff, def_comp_diff AS Def_Comp_Diff, net_composite AS Net_Composite FROM matchup_features WHERE season=? AND week=?",
+                    conn, params=[season, week]
+                )
+            if feats.empty:
+                for c in ['Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv']:
+                    if c not in df.columns:
+                        df[c] = np.nan
+                return df
+            feats = normalize_df_team_cols(feats, ['Home_Team','Away_Team'])
+            merged = df.merge(feats, on=['Home_Team','Away_Team'], how='left')
+            mu = merged['Net_Composite'].mean(skipna=True)
+            sd = merged['Net_Composite'].std(skipna=True)
+            merged['Net_Composite_norm'] = (merged['Net_Composite'] - mu) / sd if sd and sd > 0 else 0.0
+            alpha = self.settings.BLEND_ALPHA
+            merged['Blended_Adv'] = alpha * merged['Overall_Adv'].astype(float) + (1 - alpha) * merged['Net_Composite_norm'].astype(float)
+            return merged
+        except Exception:
+            for c in ['Off_Comp_Diff','Def_Comp_Diff','Net_Composite','Net_Composite_norm','Blended_Adv']:
+                if c not in df.columns:
+                    df[c] = np.nan
+            return df
+
     def generate_picks_for_week(self, week: int) -> pd.DataFrame:
         spreads_df = self.spread_repo.get_by_week(week)
         if spreads_df.empty:
             return pd.DataFrame()
+        spreads_df = normalize_df_team_cols(spreads_df, ['Home_Team','Away_Team'])
         grades_df = self.grade_repo.get_all_grades()
+        grades_df = normalize_df_team_cols(grades_df, ['Home_Team'])
         opp = grades_df.rename(columns={
             'Home_Team': 'Away_Team',
             'OVR': 'OPP_OVR', 'OFF': 'OPP_OFF', 'DEF': 'OPP_DEF', 'PASS': 'OPP_PASS', 'PBLK': 'OPP_PBLK', 'RECV': 'OPP_RECV',
@@ -62,19 +93,39 @@ class PickService:
         merged = spreads_df.merge(grades_df, on='Home_Team', how='left').merge(opp, on='Away_Team', how='left')
         for new_col, func in ADVANTAGE_BASE_COLUMNS:
             merged[new_col] = merged.apply(func, axis=1)
+        # Phase 2: attach matchup features and blended adv
+        merged = self._attach_phase2_features(merged, week)
         thresholds = self.settings.ADVANTAGE_THRESHOLDS
-        for key, thresh in thresholds.items():
+        # classify significance for classic three always
+        for key in ['Overall_Adv','Offense_Adv','Defense_Adv']:
+            thresh = thresholds.get(key, 0.0)
             sig_col = f"{key}_sig"
             merged[sig_col] = np.select(
                 [merged[key] >= thresh, merged[key] <= -thresh],
                 ['home significant', 'away significant'],
                 default='insignificant'
             )
-        merged['Home_Win_Prob'] = merged['Overall_Adv'].apply(calculate_win_probability)
+        # blended only if present and non-null anywhere
+        if 'Blended_Adv' in merged.columns and merged['Blended_Adv'].notna().any():
+            bth = thresholds.get('Blended_Adv', thresholds.get('Overall_Adv', 0.0))
+            merged['Blended_Adv_sig'] = np.select(
+                [merged['Blended_Adv'] >= bth, merged['Blended_Adv'] <= -bth],
+                ['home significant', 'away significant'],
+                default='insignificant'
+            )
+        # probabilities: prefer blended per row if non-null
+        def _adv_for_row(r):
+            bv = r.get('Blended_Adv')
+            if pd.notna(bv):
+                return float(bv)
+            return float(r.get('Overall_Adv', 0.0))
+        merged['Home_Win_Prob'] = merged.apply(lambda r: calculate_win_probability(_adv_for_row(r)), axis=1)
         merged['Away_Win_Prob'] = 1 - merged['Home_Win_Prob']
 
         def decide(row):
-            sigs = [row.get(f'{c}_sig') for c in ['Overall_Adv', 'Offense_Adv', 'Defense_Adv']]
+            sigs = [row.get(f'{c}_sig') for c in ['Overall_Adv','Offense_Adv','Defense_Adv']]
+            if 'Blended_Adv_sig' in row.index:
+                sigs = [row.get('Blended_Adv_sig')] + sigs
             home_sig = any(s == 'home significant' for s in sigs)
             away_sig = any(s == 'away significant' for s in sigs)
             if home_sig and not away_sig:
@@ -96,8 +147,9 @@ class PickService:
         # Edge filter
         before = len(picks_df)
         picks_df = picks_df[picks_df['Pick_Edge'].abs() >= self.settings.EDGE_MIN]
-        # Sort by strongest edge then overall advantage
-        picks_df = picks_df.sort_values(by=['Pick_Edge','Overall_Adv'], ascending=[False, False])
+        # Sort by strongest edge then blended/overall advantage
+        sort_adv = 'Blended_Adv' if 'Blended_Adv' in picks_df.columns else 'Overall_Adv'
+        picks_df = picks_df.sort_values(by=['Pick_Edge', sort_adv], ascending=[False, False])
         # Enforce max picks per week
         if len(picks_df) > self.settings.MAX_PICKS_PER_WEEK:
             picks_df = picks_df.head(self.settings.MAX_PICKS_PER_WEEK)

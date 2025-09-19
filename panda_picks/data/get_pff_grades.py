@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 import logging
 from pathlib import Path
 from datetime import datetime
+import re
+from typing import List, Optional
 
 # Configure logging
 logging.basicConfig(
@@ -28,10 +30,68 @@ PFF_SEASON = int(os.getenv('PFF_SEASON', DEFAULT_SEASON))
 PFF_FORCE_MANUAL_COOKIES = os.getenv('PFF_FORCE_MANUAL_COOKIES', 'true').lower() in ('1','true','yes','on')
 FULL_SEASON_WEEKS_PARAM = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18'
 
-def build_pff_url(season: int | None = None) -> str:
-    """Construct the PFF API URL for the full list of weeks (1..18)."""
+def _parse_weeks(week_spec: str) -> List[int]:
+    """Parse a comma-separated list of week tokens (e.g. '1,3-5,7').
+    Supports ranges a-b. Filters to 1..18. Returns sorted unique list.
+    Empty or invalid input -> []."""
+    if not week_spec:
+        return []
+    weeks: set[int] = set()
+    for token in week_spec.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        if re.fullmatch(r'\d+-\d+', token):
+            a,b = token.split('-',1)
+            try:
+                start = int(a); end = int(b)
+                if start > end: start, end = end, start
+                for w in range(start, end+1):
+                    if 1 <= w <= 18: weeks.add(w)
+            except ValueError:
+                continue
+        else:
+            if token.isdigit():
+                w = int(token)
+                if 1 <= w <= 18:
+                    weeks.add(w)
+    return sorted(weeks)
+
+def _derive_weeks_from_db() -> List[int]:
+    """Look at spreads table and derive list of fully completed weeks (scores not null)."""
+    try:
+        with db.get_connection() as conn:
+            q = "SELECT DISTINCT WEEK FROM spreads WHERE Home_Score IS NOT NULL AND Away_Score IS NOT NULL"
+            df = pd.read_sql_query(q, conn)
+            if df.empty:
+                return []
+            week_nums = []
+            for w in df['WEEK'].dropna():
+                m = re.match(r'WEEK(\d{1,2})$', str(w).upper())
+                if m:
+                    val = int(m.group(1))
+                    if 1 <= val <= 18:
+                        week_nums.append(val)
+            if not week_nums:
+                return []
+            max_completed = max(week_nums)
+            return list(range(1, max_completed+1))
+    except Exception as e:
+        logger.warning(f"_derive_weeks_from_db error: {e}")
+        return []
+
+def build_pff_url(season: int | None = None, weeks: Optional[List[int]] = None) -> str:
+    """Construct the PFF API URL for given season & weeks.
+    If weeks omitted or empty, uses FULL_SEASON_WEEKS_PARAM.
+    Weeks list is sorted unique.
+    """
     season = season or PFF_SEASON
-    return f"https://premium.pff.com/api/v1/teams/overview?league=nfl&season={season}&week={FULL_SEASON_WEEKS_PARAM}"
+    if weeks:
+        uniq = sorted({int(w) for w in weeks if 1 <= int(w) <= 18})
+        week_param = ','.join(str(w) for w in uniq)
+    else:
+        week_param = FULL_SEASON_WEEKS_PARAM
+    return f"https://premium.pff.com/api/v1/teams/overview?league=nfl&season={season}&week={week_param}"
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",

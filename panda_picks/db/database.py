@@ -60,6 +60,7 @@ def drop_tables():
     cursor.execute('DROP TABLE IF EXISTS picks_results')
     cursor.execute('DROP TABLE IF EXISTS teaser_results')
     cursor.execute('DROP TABLE IF EXISTS excluded_teams')  # newly added
+    cursor.execute('DROP TABLE IF EXISTS matchup_features')
 
 
 
@@ -149,16 +150,20 @@ def create_tables():
     )
     ''')
 
-    # Create advanced_stats table
+    # Create advanced_stats table (Phase 0 enhanced schema)
     cursor.execute('''
                    CREATE TABLE IF NOT EXISTS advanced_stats (
                                                                  season INTEGER,
+                                                                 week INTEGER,
                                                                  type TEXT,
                                                                  TEAM TEXT,
                                                                  composite_score REAL,
-                                                                 PRIMARY KEY (season, type, TEAM)
+                                                                 z_score REAL,
+                                                                 last_updated TEXT,
+                                                                 PRIMARY KEY (season, week, type, TEAM)
                        )
                    ''')
+
 
     # Create spreads table
     cursor.execute('''
@@ -175,6 +180,40 @@ def create_tables():
                                                           PRIMARY KEY (WEEK, Home_Team, Away_Team)
                        )
                    ''')
+    
+    # matchup_features table
+    cursor.execute('''
+                   CREATE TABLE IF NOT EXISTS matchup_features (
+                                                                 season INTEGER,
+                                                                 week INTEGER,
+                                                                 Home_Team TEXT,
+                                                                 Away_Team TEXT,
+                                                                 home_off_comp REAL,
+                                                                 home_def_comp REAL,
+                                                                 away_off_comp REAL,
+                                                                 away_def_comp REAL,
+                                                                 home_off_vs_away_def REAL,
+                                                                 home_def_vs_away_off REAL,
+                                                                 net_home_adv REAL,
+                                                                 off_comp_diff REAL,
+                                                                 def_comp_diff REAL,
+                                                                 net_composite REAL,
+                                                                 pressure_mismatch REAL,
+                                                                 turnover_index REAL,
+                                                                 momentum_home_off REAL,
+                                                                 momentum_home_def REAL,
+                                                                 momentum_away_off REAL,
+                                                                 momentum_away_def REAL,
+                                                                 trend_home_off REAL,
+                                                                 trend_home_def REAL,
+                                                                 trend_away_off REAL,
+                                                                 trend_away_def REAL,
+                                                                 impute_flag INTEGER,
+                                                                 created_at TEXT,
+                                                                 PRIMARY KEY (season, week, Home_Team, Away_Team)
+                       )
+                   ''')
+
 
     # Create picks table
     cursor.execute('''

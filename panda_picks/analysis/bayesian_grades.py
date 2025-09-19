@@ -101,8 +101,8 @@ def recompute_blended_grades(conn):
                 max_allowed = early_cap * ramp_frac
                 if weight_cur > max_allowed:
                     weight_cur = max_allowed
-            # Enforce minimum current season floor if at least one completed game
-            if n_eff > 0 and weight_cur < Settings.BAYES_MIN_CURRENT_WEIGHT:
+            # Enforce minimum current season floor only after ramp period
+            if (current_week > cap_week) and (n_eff > 0) and (weight_cur < Settings.BAYES_MIN_CURRENT_WEIGHT):
                 logging.debug(f"Bayes: elevating weight floor team={team} metric={m} from {weight_cur:.4f} to floor {Settings.BAYES_MIN_CURRENT_WEIGHT:.4f}")
                 weight_cur = Settings.BAYES_MIN_CURRENT_WEIGHT
             if weight_cur > 1:

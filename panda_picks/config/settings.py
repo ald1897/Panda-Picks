@@ -29,6 +29,8 @@ class Settings:
         "Overall_Adv": float(os.getenv("PP_OVERALL_THRESH", 2.0)),
         "Offense_Adv": float(os.getenv("PP_OFFENSE_THRESH", 2.0)),
         "Defense_Adv": float(os.getenv("PP_DEFENSE_THRESH", 2.0)),
+        # New: threshold for blended advantage gating (defaults to overall threshold if not set)
+        "Blended_Adv": float(os.getenv("PP_BLEND_THRESH", os.getenv("PP_OVERALL_THRESH", 2.0))),
     }
 
     # Probability scaling
@@ -49,6 +51,22 @@ class Settings:
 
     # Max picks constraint
     MAX_PICKS_PER_WEEK: int = int(os.getenv("PP_MAX_PICKS_PER_WEEK", 8))
+
+    # Phase 2 blending alpha (Overall_Adv vs Net_Composite_norm)
+    BLEND_ALPHA: float = float(os.getenv("PP_BLEND_ALPHA", 0.6))
+
+    # Phase 3 model calibration settings
+    MODEL_ENABLED: bool = os.getenv("PP_MODEL_ENABLED", "true").lower() in ("1","true","yes","on")
+    # Comma-separated feature list, default to Net_Composite
+    MODEL_USE_FEATURES: list[str] = [s.strip() for s in os.getenv("PP_MODEL_USE_FEATURES", "Net_Composite").split(',') if s.strip()]
+    MODEL_COVER_SCALE_STRATEGY: str = os.getenv("PP_MODEL_COVER_SCALE_STRATEGY", "resid_std")  # 'resid_std' | 'fixed'
+    MODEL_COVER_SCALE_FIXED: float = float(os.getenv("PP_MODEL_COVER_SCALE_FIXED", 6.0))
+    MODEL_COVER_SCALE_MIN: float = float(os.getenv("PP_MODEL_COVER_SCALE_MIN", 3.0))
+    MODEL_COVER_SCALE_MAX: float = float(os.getenv("PP_MODEL_COVER_SCALE_MAX", 10.0))
+    MODEL_MIN_TRAIN_WEEKS: int = int(os.getenv("PP_MODEL_MIN_TRAIN_WEEKS", 3))
+    MODEL_MIN_TRAIN_ROWS: int = int(os.getenv("PP_MODEL_MIN_TRAIN_ROWS", 20))
+    MODEL_DEFAULT_SPREAD_PRICE: float = float(os.getenv("PP_MODEL_DEFAULT_SPREAD_PRICE", -110))
+    MODEL_MIN_EDGE: float = float(os.getenv("PP_MODEL_MIN_EDGE", 0.02))
 
     # Bayesian grade blending flags (phase one)
     USE_BAYES_GRADES: bool = os.getenv("PP_USE_BAYES_GRADES", "false").lower() in ("1","true","yes","on")
@@ -103,6 +121,12 @@ class Settings:
                 setattr(cls, k[0], type(getattr(cls, k[0]))(os.getenv(k[1], getattr(cls, k[0]))))
             except Exception:
                 pass
+        # Refresh model toggles
+        try:
+            cls.MODEL_ENABLED = os.getenv("PP_MODEL_ENABLED", str(cls.MODEL_ENABLED)).lower() in ("1","true","yes","on")
+            cls.MODEL_MIN_EDGE = float(os.getenv("PP_MODEL_MIN_EDGE", cls.MODEL_MIN_EDGE))
+        except Exception:
+            pass
 
 
 # Ensure data directory exists (common expectation in code)
